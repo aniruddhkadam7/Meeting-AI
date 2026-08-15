@@ -1,0 +1,65 @@
+# Environment
+.env
+.env.local
+
+# Node
+node_modules/
+apps/desktop/dist/
+apps/desktop/node_modules/
+
+# Rust / Tauri
+apps/desktop/src-tauri/target/
+Cargo.lock.bak
+
+# Python
+apps/backend/**/__pycache__/
+apps/backend/**/*.pyc
+apps/backend/.venv/
+apps/backend/venv/
+apps/backend/.pytest_cache/
+packages/rag/**/__pycache__/
+packages/rag/**/*.pyc
+packages/rag/.venv/
+packages/rag/venv/
+packages/rag/.pytest_cache/
+packages/stt/**/__pycache__/
+packages/stt/**/*.pyc
+packages/stt/.venv/
+packages/stt/venv/
+*.egg-info/
+.pytest_cache/
+
+# STT benchmark spike: code is tracked, but its venv, downloaded models,
+# recorded audio and result dumps are all large and machine-specific.
+packages/stt-bench/.venv/
+packages/stt-bench/**/__pycache__/
+packages/stt-bench/**/*.pyc
+packages/stt-bench/corpus/
+packages/stt-bench/results/
+models/stt-bench/
+
+# Downloaded STT model weights (~130MB) — fetched by
+# packages/stt/scripts/install_model.py at setup time, never committed.
+models/
+
+# Local data (interview sessions, uploaded docs, vector store)
+data/
+apps/backend/data/
+apps/backend/storage/
+*.session.json
+
+# RAG knowledge base is stored under the user's AppData directory, never here,
+# but guard against an accidental local override during development.
+packages/rag/.rag-data/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Editors
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Logs
+*.log

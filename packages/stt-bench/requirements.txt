@@ -1,0 +1,11 @@
+# STT benchmark spike. Isolated from the app and from packages/rag — this venv
+# is throwaway and none of it ships.
+numpy>=1.24
+psutil>=5.9          # CPU / RAM sampling
+sounddevice>=0.4     # microphone capture for the corpus recorder
+
+# Candidate engines.
+pocketsphinx==5.1.1  # baseline: pinned to the version the app ships today
+sherpa-onnx>=1.13    # streaming Zipformer / NeMo FastConformer / Parakeet, plus
+                     # the offline Moonshine and Parakeet exports
+pywhispercpp>=1.5    # whisper.cpp bindings
