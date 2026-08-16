@@ -1,0 +1,168 @@
+import { useCallback, useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { Button } from "./ui";
+
+interface SessionInfo {
+  userId: string;
+  email: string | null;
+}
+
+/// REDLY Cloud account panel: sign in/up against Supabase Auth (via the Rust
+/// `auth` module), or sign out. Cloud sync is entirely opt-in — everything
+/// else in the app works fully offline with no account at all, so this is
+/// deliberately just a small settings-style panel, not a gate the user has
+/// to pass to use the product.
+export function Account({ onClose }: { onClose: () => void }) {
+  const [cloudConfigured, setCloudConfigured] = useState<boolean | null>(null);
+  const [session, setSession] = useState<SessionInfo | null>(null);
+  const [mode, setMode] = useState<"SIGN_IN" | "SIGN_UP">("SIGN_IN");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    invoke<boolean>("auth_cloud_configured").then(setCloudConfigured).catch(() => setCloudConfigured(false));
+    invoke<SessionInfo | null>("auth_get_session").then(setSession).catch(() => setSession(null));
+  }, []);
+
+  const runSync = useCallback(async () => {
+    try {
+      const mergedCount = await invoke<number>("sync_agents_now");
+      setSyncStatus(mergedCount > 0 ? `Synced — ${mergedCount} agent(s) updated from the cloud.` : "Synced.");
+    } catch (err) {
+      setSyncStatus(`Sync failed: ${String(err)}`);
+    }
+  }, []);
+
+  const handleSubmit = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const command = mode === "SIGN_IN" ? "auth_sign_in" : "auth_sign_up";
+      const info = await invoke<SessionInfo>(command, { email, password });
+      setSession(info);
+      setPassword("");
+      await runSync();
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setBusy(false);
+    }
+  }, [mode, email, password, runSync]);
+
+  const handleSignOut = useCallback(async () => {
+    setBusy(true);
+    try {
+      await invoke("auth_sign_out");
+      setSession(null);
+      setSyncStatus(null);
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  return (
+    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
+      <div className="modal-panel" role="dialog" aria-modal="true" aria-label="Account">
+        <header className="modal-header">
+          <h1 className="setup-title">Account</h1>
+          <button className="modal-close-btn" onClick={onClose} title="Close" aria-label="Close">
+            ✕
+          </button>
+        </header>
+
+        <div className="modal-body">
+          {cloudConfigured === false && (
+            <p className="setup-hint">
+              REDLY Cloud isn't configured on this build. Custom Agents and everything else keep
+              working fully offline; sign-in and cloud sync will appear once this build is connected
+              to REDLY Cloud.
+            </p>
+          )}
+
+          {cloudConfigured && session && (
+            <>
+              <p>
+                Signed in as <strong>{session.email ?? session.userId}</strong>
+              </p>
+              <p className="setup-hint">
+                Your Custom Agents sync to REDLY Cloud so they survive a reinstall. Everything else
+                (transcripts, recordings) stays local on this device.
+              </p>
+              {syncStatus && <p className="setup-hint">{syncStatus}</p>}
+            </>
+          )}
+
+          {cloudConfigured && !session && (
+            <>
+              <div className="agent-mode-toggle">
+                <button
+                  className={`agent-mode-tab${mode === "SIGN_IN" ? " active" : ""}`}
+                  onClick={() => setMode("SIGN_IN")}
+                >
+                  Sign in
+                </button>
+                <button
+                  className={`agent-mode-tab${mode === "SIGN_UP" ? " active" : ""}`}
+                  onClick={() => setMode("SIGN_UP")}
+                >
+                  Create account
+                </button>
+              </div>
+              <div className="setup-identity-field">
+                <input
+                  className="setup-input"
+                  type="email"
+                  aria-label="Email"
+                  placeholder="Email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
+              <div className="setup-identity-field">
+                <input
+                  className="setup-input"
+                  type="password"
+                  aria-label="Password"
+                  placeholder="Password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              </div>
+              {error && <p className="error">{error}</p>}
+              <p className="setup-hint">Signing in is optional — REDLY works fully offline without an account.</p>
+            </>
+          )}
+        </div>
+
+        <footer className="modal-footer">
+          {cloudConfigured && session ? (
+            <>
+              <Button variant="ghost" onClick={handleSignOut} disabled={busy}>
+                Sign out
+              </Button>
+              <Button variant="secondary" onClick={runSync} disabled={busy}>
+                Sync now
+              </Button>
+            </>
+          ) : cloudConfigured ? (
+            <>
+              <Button variant="ghost" onClick={onClose} disabled={busy}>
+                Cancel
+              </Button>
+              <Button variant="primary" onClick={handleSubmit} disabled={busy || !email || !password}>
+                {busy ? "Working…" : mode === "SIGN_IN" ? "Sign in" : "Create account"}
+              </Button>
+            </>
+          ) : (
+            <Button variant="ghost" onClick={onClose}>
+              Close
+            </Button>
+          )}
+        </footer>
+      </div>
+    </div>
+  );
+}

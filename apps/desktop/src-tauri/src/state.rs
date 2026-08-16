@@ -81,3 +81,8 @@ pub struct AppState {
     /// struct. See `notes_mode::commands`.
     pub notes_dictation: Mutex<CaptureSession>,
 }
+
+// `AnalyticsQueue` is registered as its own top-level Tauri-managed state
+// (see lib.rs's `.manage(analytics::AnalyticsQueue::default())`) rather than
+// a field here, since it's `Mutex<Vec<_>>`-backed and needs to be reachable
+// from a periodic background flush task independent of any `AppState` lock.

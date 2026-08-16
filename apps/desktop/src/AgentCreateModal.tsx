@@ -12,6 +12,7 @@ import {
 } from "./types";
 import { buildPredefinedDescription, roleQuestions } from "./agentRoleQuestions";
 import { PersonalizationEditor } from "./AgentCreate";
+import { syncAgentsInBackground } from "./cloudSync";
 
 type CreationMode = "PREDEFINED" | "CUSTOM";
 
@@ -116,6 +117,8 @@ export function AgentCreateModal({ onCreated, onClose }: Props) {
           agentId: agent.id,
         }).catch((e) => console.error("Failed to upload agent knowledge document:", e));
       }
+
+      syncAgentsInBackground();
 
       onCreated(agent);
     } catch (e) {

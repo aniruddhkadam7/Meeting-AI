@@ -34,4 +34,11 @@ reqwest = { version = "0.13.4", default-features = false, features = ["json", "b
 futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
 windows = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }
 tauri-plugin-global-shortcut = "2.3.2"
+tauri-plugin-updater = "2"
+keyring = "3"
+# Direct dependency (not just transitive via tauri-plugin-updater) so
+# `rustls::crypto::ring::default_provider().install_default()` can be called
+# explicitly at process start — see src/tls_init.rs for why this is needed.
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+tokio = { version = "1", features = ["time"] }
 

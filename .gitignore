@@ -2,6 +2,13 @@
 .env
 .env.local
 
+# Tauri updater signing key — must never be committed. The public key lives
+# in apps/desktop/src-tauri/tauri.conf.json; the private key is generated
+# locally (see docs/cloud-migration.md) and stored outside the repo.
+*.key
+*.key.pub
+updater.key*
+
 # Node
 node_modules/
 apps/desktop/dist/

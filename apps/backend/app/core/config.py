@@ -1,7 +1,12 @@
 """Backend configuration, sourced from environment variables / .env.
 
-Kept intentionally minimal for Phase 1: no auth, no multi-tenancy, no cloud
-config.
+REDLY Cloud (hybrid architecture): this service now also verifies Supabase
+Auth JWTs and writes usage/cost tracking to Supabase Postgres via the
+service-role key. Both are optional at the config level — an unset
+`SUPABASE_*` block means auth-required routes reject with a clear 401 (server
+misconfigured) and usage-cost writes silently no-op, so local dev without a
+Supabase project still runs the rest of the API (mock LLM, existing ask
+routes) unchanged.
 """
 
 from __future__ import annotations
@@ -74,6 +79,22 @@ class Settings:
     ask_temperature: float = float(os.getenv("ASK_TEMPERATURE", "0.65"))
 
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
+
+    # --- REDLY Cloud: Supabase Auth + Postgres ---------------------------
+    # Project URL and anon key are the same values the desktop app is given
+    # (safe to be non-secret; RLS is what actually protects data). The JWT
+    # secret and service-role key are backend-only and must never be sent to
+    # a client.
+    supabase_url: Optional[str] = os.getenv("SUPABASE_URL") or None
+    supabase_anon_key: Optional[str] = os.getenv("SUPABASE_ANON_KEY") or None
+    supabase_jwt_secret: Optional[str] = os.getenv("SUPABASE_JWT_SECRET") or None
+    supabase_service_role_key: Optional[str] = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or None
+
+    # Rough per-1K-token USD pricing used only to populate usage_costs'
+    # estimated_cost_usd for cost visibility — not billing-accurate, not used
+    # for enforcement (no subscription/usage enforcement exists yet).
+    price_per_1k_input_usd: float = float(os.getenv("PRICE_PER_1K_INPUT_USD", "0.00015"))
+    price_per_1k_output_usd: float = float(os.getenv("PRICE_PER_1K_OUTPUT_USD", "0.0006"))
 
 
 @lru_cache

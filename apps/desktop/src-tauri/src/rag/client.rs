@@ -13,6 +13,7 @@ pub struct RagClient {
 
 impl RagClient {
     pub fn new() -> Self {
+        crate::tls_init::ensure_installed();
         Self {
             http: reqwest::Client::builder()
                 .timeout(Duration::from_secs(120)) // document processing can be slow

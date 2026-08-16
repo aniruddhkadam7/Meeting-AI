@@ -7,6 +7,8 @@ import { SalesWorkspace } from "./SalesWorkspace";
 import { ConsultingWorkspace } from "./ConsultingWorkspace";
 import { NotesWorkspace } from "./NotesWorkspace";
 import { AgentsView } from "./AgentsView";
+import { Account } from "./Account";
+import { UpdateBanner } from "./UpdateBanner";
 import { Button } from "./ui";
 
 type View = "HOME" | "INTERVIEW" | "SALES" | "CONSULTING" | "NOTES" | "AGENTS";
@@ -14,6 +16,7 @@ type View = "HOME" | "INTERVIEW" | "SALES" | "CONSULTING" | "NOTES" | "AGENTS";
 function App() {
   const [view, setView] = useState<View>("HOME");
   const [agentsInitialSubview, setAgentsInitialSubview] = useState<"LIST" | "CREATE">("LIST");
+  const [showAccount, setShowAccount] = useState(false);
 
   const goHome = useCallback(() => {
     setView("HOME");
@@ -73,7 +76,13 @@ function App() {
             <span className="header-product">REDLY</span>
           </div>
         </div>
+        <Button variant="ghost" size="sm" onClick={() => setShowAccount(true)}>
+          Account
+        </Button>
       </header>
+
+      {showAccount && <Account onClose={() => setShowAccount(false)} />}
+      <UpdateBanner />
 
       <Home
         onSelectInterview={() => setView("INTERVIEW")}

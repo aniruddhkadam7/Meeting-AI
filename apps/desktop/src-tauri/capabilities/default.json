@@ -9,6 +9,7 @@
     "opener:default",
     "dialog:default",
     "fs:allow-read-file",
-    "global-shortcut:default"
+    "global-shortcut:default",
+    "updater:default"
   ]
 }

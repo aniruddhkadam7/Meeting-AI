@@ -13,6 +13,7 @@ mod config;
 mod types;
 
 pub use client::BackendClient;
+pub use config::backend_url;
 pub use types::{
     AgentAskRequest, AgentAskResponse, AgentConversationTurn, AgentPersonalization,
     AgentRetrievedChunk, AnalysisProgressEvent, AskRequest, AskResponse, AskRetrievedChunk,

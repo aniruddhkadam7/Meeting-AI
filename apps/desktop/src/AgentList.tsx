@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Button, Card, EmptyState } from "./ui";
 import { Agent, PREDEFINED_ROLES } from "./types";
+import { syncAgentsInBackground } from "./cloudSync";
 
 export type AgentAction = "CUSTOMIZE" | "KNOWLEDGE" | "HISTORY";
 
@@ -84,6 +85,7 @@ export function AgentList({ onOpen, onCreateNew, onStart, refreshKey }: Props) {
       await invoke("update_agent", { input: { id: renaming.id, name } });
       setRenaming(null);
       refresh();
+      syncAgentsInBackground();
     } catch {
       // Keep the rename dialog open so the user can retry.
     }
@@ -93,6 +95,7 @@ export function AgentList({ onOpen, onCreateNew, onStart, refreshKey }: Props) {
     if (!deleting) return;
     try {
       await invoke("delete_agent", { id: deleting.id });
+      syncAgentsInBackground();
     } finally {
       setDeleting(null);
       refresh();

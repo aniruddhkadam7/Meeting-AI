@@ -129,6 +129,16 @@ pub fn create_agent(
     ensure_loaded(&app, &mut guard);
     guard.push(agent.clone());
     save(&app, &guard)?;
+
+    crate::analytics::track(
+        &app.state::<crate::analytics::AnalyticsQueue>(),
+        "agent_created",
+        serde_json::json!({
+            "has_base_role": agent.base_role.is_some(),
+            "base_role": agent.base_role,
+        }),
+    );
+
     Ok(agent)
 }
 

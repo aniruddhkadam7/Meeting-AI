@@ -7,6 +7,7 @@ import { PersonalizationEditor } from "./AgentCreate";
 import { AgentKnowledgePanel } from "./AgentKnowledgePanel";
 import { AgentHistory } from "./AgentHistory";
 import { startAgentConversation } from "./agentStart";
+import { syncAgentsInBackground } from "./cloudSync";
 
 type WorkspaceView = "KNOWLEDGE" | "HISTORY" | "INSTRUCTIONS" | "PERSONALIZATION";
 
@@ -117,6 +118,7 @@ function InstructionsPanel({ agent, onAgentUpdated }: { agent: Agent; onAgentUpd
         },
       });
       onAgentUpdated(updated);
+      syncAgentsInBackground();
     } catch (e) {
       setError(String(e));
     } finally {
@@ -189,6 +191,7 @@ function PersonalizationPanel({ agent, onAgentUpdated }: { agent: Agent; onAgent
           input: { id: agent.id, personalization: next },
         });
         onAgentUpdated(updated);
+        syncAgentsInBackground();
       } catch (e) {
         setError(String(e));
       } finally {

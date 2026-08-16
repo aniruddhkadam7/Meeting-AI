@@ -1,10 +1,13 @@
 mod agents;
+mod analytics;
 mod analyzer;
 // Public so the `audio_probe` binary (src/bin/audio_probe.rs) can drive the
 // real capture path when measuring the pipeline, rather than a copy of it that
 // could drift from what actually ships.
 pub mod audio;
+mod auth;
 mod backend;
+mod cloud_sync;
 mod commands;
 mod consulting_mode;
 mod history;
@@ -14,6 +17,8 @@ mod overlay_window;
 mod rag;
 mod sales_mode;
 mod state;
+mod tls_init;
+mod updater;
 // Public alongside `audio` so `src/bin/pipeline_test.rs` can drive the real
 // recording pipeline headlessly instead of a reimplementation of it.
 pub mod stt;
@@ -27,11 +32,13 @@ use state::AppState;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     env_logger::init();
+    tls_init::ensure_installed();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
@@ -51,6 +58,7 @@ pub fn run() {
         .manage(consulting_mode::history::ConsultingHistoryStore::default())
         .manage(agents::store::AgentStore::default())
         .manage(agents::history::AgentHistoryStore::default())
+        .manage(analytics::AnalyticsQueue::default())
         .setup(|app| {
             use tauri_plugin_global_shortcut::GlobalShortcutExt;
             // Ctrl+Shift+Space: show/hide the Interview Mode overlay (spec
@@ -80,6 +88,28 @@ pub fn run() {
                     log::error!("failed to start RAG service: {err}");
                 }
             });
+
+            // Analytics: record app_opened once at launch, then flush the
+            // queue on a background timer for the lifetime of the app.
+            // Flushing is a no-op (events stay queued) until the user is
+            // signed in — see analytics::queue::flush_events.
+            {
+                let analytics_state = app.state::<analytics::AnalyticsQueue>();
+                analytics::track(
+                    &analytics_state,
+                    "app_opened",
+                    serde_json::json!({ "os": "windows" }),
+                );
+            }
+            let analytics_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+                    let queue = analytics_handle.state::<analytics::AnalyticsQueue>();
+                    analytics::flush_events(&queue).await;
+                }
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -161,6 +191,14 @@ pub fn run() {
             agents::overlay::toggle_agent_overlay,
             agents::overlay::resize_agent_overlay,
             agents::overlay::set_agent_overlay_always_on_top,
+            auth::commands::auth_cloud_configured,
+            auth::commands::auth_sign_up,
+            auth::commands::auth_sign_in,
+            auth::commands::auth_sign_out,
+            auth::commands::auth_get_session,
+            cloud_sync::commands::sync_agents_now,
+            updater::check_for_update,
+            updater::install_update_and_restart,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
