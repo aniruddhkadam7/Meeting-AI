@@ -37,7 +37,14 @@ impl RagServiceHandle {
     /// error) if the service's venv hasn't been set up — the caller can still
     /// run the rest of the app without document upload/RAG features available,
     /// rather than failing the whole app to launch.
-    pub fn spawn() -> Result<Option<Self>, String> {
+    ///
+    /// `embed_config`: hardware-tier-driven (`RAG_EMBED_BATCH_SIZE`,
+    /// `RAG_TORCH_THREADS`), read once at spawn time — Python's `Settings`
+    /// class (packages/rag/app/core/config.py) reads these at process
+    /// startup and caches them, so applying a new value requires restarting
+    /// this process (see `restart`), the same way `packages/rag`'s own
+    /// embedding model is loaded once and reused for the process lifetime.
+    pub fn spawn(embed_config: EmbedProcessConfig) -> Result<Option<Self>, String> {
         let Some(python) = rag_venv_python() else {
             log::warn!(
                 "RAG service venv not found at packages/rag/.venv — document upload/RAG search will be unavailable"
@@ -50,6 +57,8 @@ impl RagServiceHandle {
         let mut child = Command::new(&python)
             .args(["-m", "uvicorn", "app.main:app", "--port", &RAG_PORT.to_string()])
             .current_dir(&package_dir)
+            .env("RAG_EMBED_BATCH_SIZE", embed_config.embed_batch_size.to_string())
+            .env("RAG_TORCH_THREADS", embed_config.torch_threads.to_string())
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -68,6 +77,36 @@ impl RagServiceHandle {
             let _ = child.wait();
         }
     }
+
+    /// Kills the current process and spawns a fresh one with new
+    /// embedding-config env vars. Used when the user changes performance
+    /// mode — RAG's Python settings are fixed at process startup (see
+    /// `spawn`'s doc comment), so a live in-process reconfiguration isn't
+    /// possible without a deeper change to how `packages/rag` caches
+    /// settings. Callers should treat the brief gap between shutdown and
+    /// the new process becoming healthy the same way initial startup is
+    /// treated (poll `/health`), not as an error.
+    pub fn restart(&mut self, embed_config: EmbedProcessConfig) -> Result<(), String> {
+        self.shutdown();
+        let Some(mut spawned) = Self::spawn(embed_config)? else {
+            return Err("RAG service venv not found — cannot restart".to_string());
+        };
+        // `.take()`, not a whole-struct move — `spawned` still runs its
+        // `Drop` impl at the end of this scope, which is a no-op once its
+        // `child` has been taken (mirrors `shutdown()`'s own `self.child.take()`).
+        self.child = spawned.child.take();
+        Ok(())
+    }
+}
+
+/// The subset of `hardware::PerformanceConfig` relevant to spawning the RAG
+/// child process — kept as its own small struct (rather than passing the
+/// full `PerformanceConfig` here) so `rag::process` does not need to depend
+/// on the `hardware` module's other STT/retrieval fields it has no use for.
+#[derive(Debug, Clone, Copy)]
+pub struct EmbedProcessConfig {
+    pub embed_batch_size: u32,
+    pub torch_threads: u32,
 }
 
 impl Drop for RagServiceHandle {

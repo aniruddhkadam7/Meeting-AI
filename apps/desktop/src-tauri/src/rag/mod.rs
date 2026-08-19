@@ -17,6 +17,6 @@ mod retrieval_planner;
 pub mod types;
 
 pub use client::RagClient;
-pub use process::{wait_until_healthy_default, RagServiceHandle};
+pub use process::{wait_until_healthy_default, EmbedProcessConfig, RagServiceHandle};
 pub use retrieval_planner::RetrievalPlanner;
 pub use types::{DocumentMetadata, DocumentTextResponse, KnowledgeBaseStatus, SearchResponse, SearchResultItem};

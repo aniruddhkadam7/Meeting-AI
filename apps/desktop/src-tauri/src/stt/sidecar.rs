@@ -102,7 +102,18 @@ impl SttSidecar {
     /// writing audio to stdin never blocks on draining stdout (a naive
     /// write-then-read pattern deadlocks on Windows once the pipe buffer fills —
     /// see docs/progress.md Step 4 for how this was diagnosed).
-    pub fn spawn(source: AudioSource, events_tx: Sender<SttEvent>) -> Result<Self, String> {
+    ///
+    /// `num_threads`: an explicit thread count (from
+    /// `hardware::PerformanceManager::effective_config()`) takes priority
+    /// over the `STT_NUM_THREADS` environment variable when `Some` — this is
+    /// the tier-driven path production call sites use. `None` preserves the
+    /// pre-existing env-var-pass-through behavior unchanged, which
+    /// `bin/pipeline_test.rs` (a headless test binary with no
+    /// `PerformanceManager`/`AppHandle` available) relies on. Two sidecars
+    /// (system audio + microphone) can be spawned concurrently — passing the
+    /// value explicitly here, rather than mutating `std::env` before each
+    /// spawn, avoids a process-global race between them.
+    pub fn spawn(source: AudioSource, events_tx: Sender<SttEvent>, num_threads: Option<u32>) -> Result<Self, String> {
         let engine = SttEngineKind::from_env();
 
         // The streaming engine needs its own venv (sherpa-onnx + onnxruntime);
@@ -150,8 +161,15 @@ impl SttSidecar {
         if let Some(ms) = end_silence_ms {
             command.env("STT_END_SILENCE_MS", ms);
         }
-        if let Ok(threads) = std::env::var("STT_NUM_THREADS") {
-            command.env("STT_NUM_THREADS", threads);
+        match num_threads {
+            Some(threads) => {
+                command.env("STT_NUM_THREADS", threads.to_string());
+            }
+            None => {
+                if let Ok(threads) = std::env::var("STT_NUM_THREADS") {
+                    command.env("STT_NUM_THREADS", threads);
+                }
+            }
         }
         if let Ok(dir) = std::env::var("STT_MODEL_DIR") {
             command.env("STT_MODEL_DIR", dir);

@@ -1,0 +1,706 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>i3 STT Profiling Report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #F7F8FA;
+    --bg-raised: #FFFFFF;
+    --bg-sunken: #EEF1F4;
+    --ink: #0B1220;
+    --ink-soft: #3A4453;
+    --muted: #7A8699;
+    --line: #DBE0E7;
+    --line-soft: #E9ECF0;
+    --accent: #3D5A80;
+    --accent-soft: #E4EBF3;
+    --confirmed: #2F8F6E;
+    --confirmed-soft: #E4F3EC;
+    --bottleneck: #B8433D;
+    --bottleneck-soft: #FBEAE9;
+    --unmeasured: #9A7B2F;
+    --unmeasured-soft: #F6EFDD;
+    --code-bg: #101826;
+    --code-ink: #DCE4F0;
+    --shadow: 0 1px 2px rgba(11,18,32,0.04), 0 8px 24px -12px rgba(11,18,32,0.10);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0E141F;
+      --bg-raised: #161D2B;
+      --bg-sunken: #0A0F18;
+      --ink: #E8EAED;
+      --ink-soft: #C3CAD6;
+      --muted: #8894A6;
+      --line: #2A3344;
+      --line-soft: #212939;
+      --accent: #7FA1C9;
+      --accent-soft: #1D2A3B;
+      --confirmed: #5FBF97;
+      --confirmed-soft: #16281F;
+      --bottleneck: #E1857E;
+      --bottleneck-soft: #2B1918;
+      --unmeasured: #D9B96A;
+      --unmeasured-soft: #2A2312;
+      --code-bg: #0A0F18;
+      --code-ink: #C9D4E6;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px -12px rgba(0,0,0,0.5);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0E141F;
+    --bg-raised: #161D2B;
+    --bg-sunken: #0A0F18;
+    --ink: #E8EAED;
+    --ink-soft: #C3CAD6;
+    --muted: #8894A6;
+    --line: #2A3344;
+    --line-soft: #212939;
+    --accent: #7FA1C9;
+    --accent-soft: #1D2A3B;
+    --confirmed: #5FBF97;
+    --confirmed-soft: #16281F;
+    --bottleneck: #E1857E;
+    --bottleneck-soft: #2B1918;
+    --unmeasured: #D9B96A;
+    --unmeasured-soft: #2A2312;
+    --code-bg: #0A0F18;
+    --code-ink: #C9D4E6;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px -12px rgba(0,0,0,0.5);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .report {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 56px 32px 120px;
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr);
+    gap: 48px;
+    align-items: start;
+  }
+
+  @media (max-width: 900px) {
+    .report { grid-template-columns: 1fr; }
+    nav.toc { display: none; }
+  }
+
+  nav.toc {
+    position: sticky;
+    top: 40px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12.5px;
+  }
+  nav.toc .toc-label {
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    font-weight: 600;
+    margin-bottom: 14px;
+  }
+  nav.toc ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    border-left: 1px solid var(--line);
+  }
+  nav.toc a {
+    display: block;
+    padding: 6px 0 6px 14px;
+    margin-left: -1px;
+    border-left: 1px solid transparent;
+    color: var(--muted);
+    text-decoration: none;
+  }
+  nav.toc a:hover { color: var(--ink); border-left-color: var(--accent); }
+
+  main { min-width: 0; }
+
+  header.title-block {
+    margin-bottom: 44px;
+    padding-bottom: 32px;
+    border-bottom: 1px solid var(--line);
+  }
+  .eyebrow {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+    font-weight: 600;
+    margin-bottom: 14px;
+  }
+  h1 {
+    font-family: "Source Serif 4", Georgia, serif;
+    font-weight: 600;
+    font-size: clamp(2rem, 4vw, 2.7rem);
+    line-height: 1.14;
+    margin: 0 0 14px;
+    text-wrap: balance;
+    letter-spacing: -0.01em;
+  }
+  .subtitle {
+    font-size: 1.08rem;
+    color: var(--ink-soft);
+    max-width: 62ch;
+    margin: 0 0 20px;
+  }
+  .meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 22px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+  .meta-row strong { color: var(--ink-soft); font-weight: 600; }
+
+  section { margin-bottom: 52px; scroll-margin-top: 32px; }
+  section > h2 {
+    font-family: "Source Serif 4", Georgia, serif;
+    font-weight: 600;
+    font-size: 1.5rem;
+    margin: 0 0 6px;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+  section > h2 .num {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.95rem;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  section > .section-dek {
+    color: var(--muted);
+    font-size: 0.95rem;
+    margin: 0 0 24px;
+    max-width: 70ch;
+  }
+
+  h3 {
+    font-family: "Inter", sans-serif;
+    font-weight: 600;
+    font-size: 1.05rem;
+    margin: 28px 0 12px;
+    color: var(--ink);
+  }
+
+  p { max-width: 72ch; margin: 0 0 14px; color: var(--ink-soft); }
+  p.tight { margin-bottom: 8px; }
+  strong { color: var(--ink); font-weight: 600; }
+  code {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.88em;
+    background: var(--bg-sunken);
+    border: 1px solid var(--line-soft);
+    border-radius: 4px;
+    padding: 0.1em 0.4em;
+    color: var(--ink);
+  }
+
+  /* pipeline diagram */
+  .pipeline {
+    display: flex;
+    gap: 4px;
+    overflow-x: auto;
+    padding: 4px 4px 16px;
+    margin: 8px 0 28px;
+  }
+  .pipe-stage {
+    flex: 0 0 auto;
+    min-width: 128px;
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 12px 14px;
+    box-shadow: var(--shadow);
+    position: relative;
+  }
+  .pipe-stage .n {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .pipe-stage .label {
+    font-size: 13px;
+    font-weight: 600;
+    margin-top: 4px;
+    line-height: 1.3;
+  }
+  .pipe-stage .status {
+    margin-top: 8px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 2px 7px;
+    border-radius: 4px;
+    display: inline-block;
+  }
+  .pipe-stage.bottleneck .status { background: var(--bottleneck-soft); color: var(--bottleneck); }
+  .pipe-stage.clear .status { background: var(--confirmed-soft); color: var(--confirmed); }
+  .pipe-stage.minor .status { background: var(--unmeasured-soft); color: var(--unmeasured); }
+  .pipe-arrow {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    color: var(--line);
+    font-size: 18px;
+    padding: 0 2px;
+  }
+
+  /* callouts */
+  .callout {
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin: 18px 0;
+    border: 1px solid var(--line);
+    max-width: 76ch;
+  }
+  .callout .tag {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    display: inline-block;
+    margin-bottom: 8px;
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+  .callout p:last-child { margin-bottom: 0; }
+  .callout.finding { background: var(--bottleneck-soft); border-color: color-mix(in srgb, var(--bottleneck) 30%, var(--line)); }
+  .callout.finding .tag { background: var(--bottleneck); color: white; }
+  .callout.confirmed { background: var(--confirmed-soft); border-color: color-mix(in srgb, var(--confirmed) 30%, var(--line)); }
+  .callout.confirmed .tag { background: var(--confirmed); color: white; }
+  .callout.caveat { background: var(--unmeasured-soft); border-color: color-mix(in srgb, var(--unmeasured) 30%, var(--line)); }
+  .callout.caveat .tag { background: var(--unmeasured); color: white; }
+  .callout.neutral { background: var(--bg-sunken); }
+  .callout.neutral .tag { background: var(--ink-soft); color: var(--bg); }
+
+  /* tables */
+  .table-wrap { overflow-x: auto; margin: 16px 0 24px; border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); }
+  table { border-collapse: collapse; width: 100%; min-width: 560px; background: var(--bg-raised); }
+  caption { text-align: left; padding: 12px 16px 0; font-size: 13px; color: var(--muted); caption-side: top; }
+  th, td {
+    text-align: left;
+    padding: 10px 14px;
+    font-size: 13.5px;
+    border-bottom: 1px solid var(--line-soft);
+    white-space: nowrap;
+  }
+  th {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    font-weight: 600;
+    background: var(--bg-sunken);
+  }
+  td.num, th.num { font-family: "JetBrains Mono", monospace; font-variant-numeric: tabular-nums; text-align: right; }
+  tr:last-child td { border-bottom: none; }
+  tr.hl td { background: var(--accent-soft); font-weight: 600; }
+  td.flag-bottleneck { color: var(--bottleneck); font-weight: 600; }
+  td.flag-ok { color: var(--confirmed); font-weight: 600; }
+
+  /* priority list */
+  .priority-list { display: flex; flex-direction: column; gap: 10px; margin: 16px 0 24px; }
+  .priority-item {
+    display: grid;
+    grid-template-columns: 32px 1fr auto;
+    gap: 14px;
+    align-items: start;
+    padding: 13px 16px;
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+  }
+  .priority-item .letter {
+    font-family: "Source Serif 4", serif;
+    font-weight: 700;
+    font-size: 17px;
+    color: var(--accent);
+  }
+  .priority-item .body h4 { margin: 0 0 4px; font-size: 14px; font-weight: 600; }
+  .priority-item .body p { margin: 0; font-size: 13px; color: var(--muted); max-width: 60ch; }
+  .verdict-pill {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 4px 9px;
+    border-radius: 20px;
+    white-space: nowrap;
+    align-self: center;
+  }
+  .verdict-pill.recommend { background: var(--confirmed-soft); color: var(--confirmed); }
+  .verdict-pill.defer { background: var(--unmeasured-soft); color: var(--unmeasured); }
+  .verdict-pill.reject { background: var(--bottleneck-soft); color: var(--bottleneck); }
+  .verdict-pill.investigate { background: var(--accent-soft); color: var(--accent); }
+
+  /* code block */
+  pre {
+    background: var(--code-bg);
+    color: var(--code-ink);
+    border-radius: 10px;
+    padding: 16px 18px;
+    overflow-x: auto;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12.5px;
+    line-height: 1.6;
+    margin: 14px 0 22px;
+    box-shadow: var(--shadow);
+  }
+  pre code { background: none; border: none; padding: 0; color: inherit; }
+
+  ul.clean, ol.clean { padding-left: 20px; margin: 10px 0 18px; }
+  ul.clean li, ol.clean li { margin-bottom: 7px; color: var(--ink-soft); max-width: 68ch; }
+  ul.clean li strong, ol.clean li strong { color: var(--ink); }
+
+  .file-list { display: flex; flex-direction: column; gap: 8px; margin: 14px 0 20px; }
+  .file-row {
+    display: grid;
+    grid-template-columns: minmax(0,1fr) auto;
+    gap: 14px;
+    align-items: center;
+    padding: 9px 14px;
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    font-size: 13px;
+  }
+  .file-row code { background: none; border: none; padding: 0; font-size: 12.5px; }
+  .file-row .why { color: var(--muted); font-size: 12px; text-align: right; }
+
+  footer.report-footer {
+    margin-top: 60px;
+    padding-top: 24px;
+    border-top: 1px solid var(--line);
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    a { transition: color 120ms ease, border-color 120ms ease; }
+  }
+</style>
+</head>
+<body>
+<div class="report">
+
+<nav class="toc" aria-label="Table of contents">
+  <div class="toc-label">Contents</div>
+  <ol>
+    <li><a href="#baseline">1 — Baseline</a></li>
+    <li><a href="#pipeline">2 — Pipeline map</a></li>
+    <li><a href="#bottleneck">3 — The bottleneck</a></li>
+    <li><a href="#methodology">4 — Simulation method</a></li>
+    <li><a href="#candidates">5 — Candidates (A–I)</a></li>
+    <li><a href="#results">6 — Benchmark results</a></li>
+    <li><a href="#recommendation">7 — Recommendation</a></li>
+    <li><a href="#i3-behavior">8 — Expected i3 behavior</a></li>
+    <li><a href="#impact">9 — CPU / RAM / accuracy impact</a></li>
+    <li><a href="#files">10 — Files that would change</a></li>
+  </ol>
+</nav>
+
+<main>
+  <header class="title-block">
+    <div class="eyebrow">STT Performance · Profiling Phase · No code shipped</div>
+    <h1>Where REDLY's transcription latency actually comes from on an i3</h1>
+    <p class="subtitle">Nine pipeline stages, profiled and benchmarked with the existing <code>stt-bench</code> harness. One stage explains nearly all of the 350–500&nbsp;ms budget. Threads are not it.</p>
+    <div class="meta-row">
+      <span><strong>Reference machine</strong> i5-13400, 10c/16t, 16GB</span>
+      <span><strong>Model</strong> nemo-fastconformer-80ms-int8 (unchanged)</span>
+      <span><strong>Real i3 hardware</strong> not available — simulated only</span>
+    </div>
+  </header>
+
+  <section id="baseline">
+    <h2><span class="num">01</span> Current baseline</h2>
+    <p class="section-dek">Every number below is measured, not estimated — production model, production code path, <code>stt-bench</code>'s synthetic corpus, three repeated runs for stability.</p>
+
+    <div class="table-wrap">
+      <table>
+        <caption>Production config (<code>STT_NUM_THREADS=4</code>, today's shipped default)</caption>
+        <thead>
+          <tr><th>Metric</th><th class="num">Value</th><th>Source</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Model load / startup</td><td class="num">~1.2–1.3&nbsp;s</td><td><code>load_time_s</code>, one-time per sidecar spawn</td></tr>
+          <tr><td>First-partial latency</td><td class="num">486–501&nbsp;ms</td><td>speech start → first partial text</td></tr>
+          <tr><td>Final-result latency</td><td class="num">353–401&nbsp;ms</td><td>speech end → finalized segment</td></tr>
+          <tr><td>Partial update interval</td><td class="num">~203&nbsp;ms</td><td>median gap between partial revisions</td></tr>
+          <tr><td>WER (synthetic corpus)</td><td class="num">1.8%</td><td>constant across every config tested</td></tr>
+          <tr><td>CPU, 4 threads</td><td class="num">51.4% of machine</td><td>≈ 8 of 16 logical cores saturated</td></tr>
+          <tr><td>RAM (RSS delta)</td><td class="num">~226&nbsp;MB</td><td>flat regardless of thread count</td></tr>
+          <tr><td><code>feed_audio()</code> block time</td><td class="num">0&nbsp;ms, always</td><td>never blocks the audio thread — architecture is sound</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout neutral">
+      <span class="tag">Note on WER</span>
+      <p>The synthetic corpus is TTS audio with none of real speech's coarticulation or room tone — it flatters every config equally. Treat the 1.8% figure as a <strong>stability check</strong> ("does accuracy hold across configs?") not an absolute accuracy number. Real accuracy is documented separately in <code>docs/stt-benchmark.md</code>.</p>
+    </div>
+  </section>
+
+  <section id="pipeline">
+    <h2><span class="num">02</span> Pipeline map — nine stages, walked in order</h2>
+    <p class="section-dek">Traced through the real code paths: <code>system_capture.rs</code> → <code>resample.rs</code> → <code>gap_fill.rs</code> → <code>pipeline.rs</code> → <code>sidecar.py</code> → transcript event → UI.</p>
+
+    <div class="pipeline">
+      <div class="pipe-stage clear"><div class="n">01</div><div class="label">Audio capture</div><div class="status">Clean</div></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-stage clear"><div class="n">02</div><div class="label">Buffering</div><div class="status">Clean</div></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-stage minor"><div class="n">03</div><div class="label">Resample / downmix</div><div class="status">Minor cost</div></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-stage bottleneck"><div class="n">04</div><div class="label">VAD / endpointing</div><div class="status">Not a gate</div></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-stage clear"><div class="n">05</div><div class="label">Chunk formation</div><div class="status">No batching layer</div></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-stage bottleneck"><div class="n">06</div><div class="label">Model inference</div><div class="status">The bottleneck</div></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-stage clear"><div class="n">07</div><div class="label">First partial</div><div class="status">Downstream of 06</div></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-stage clear"><div class="n">08</div><div class="label">Final result</div><div class="status">Downstream of 06</div></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-stage clear"><div class="n">09</div><div class="label">UI delivery</div><div class="status">Clean</div></div>
+    </div>
+
+    <h3>1 · Audio capture — WASAPI loopback</h3>
+    <p>20&nbsp;ms buffer requested (<code>system_capture.rs:70</code>). <code>audio_probe</code> (existing tool) reports discontinuities and delivery ratio in real time; the architecture here was already hardened in an earlier pass — WASAPI delivers <strong>zero packets while the render endpoint is idle</strong>, which is why <code>SilenceGapFiller</code> exists. Not revisited: no evidence of a problem, and the fix is orthogonal to CPU class.</p>
+
+    <h3>2 · Buffering — <code>SilenceGapFiller</code></h3>
+    <p>Pure arithmetic against a monotonic clock, one <code>Vec&lt;f32&gt;</code> allocation only when a real gap (&gt;120&nbsp;ms) is detected. Negligible cost on any CPU class.</p>
+
+    <h3>3 · Resample / format conversion</h3>
+    <p>Every ~20&nbsp;ms WASAPI packet (typically 48kHz stereo → 16kHz mono) currently costs <strong>3–4 heap allocations</strong>: one in <code>downmix_to_mono</code> (allocates even when <code>channels&nbsp;≤&nbsp;1</code>), one for the resampler's <code>leftover.drain()</code> block, one for its output <code>Vec</code>. At ~50 packets/second during speech, that's 150–200 allocations/sec. Trivial on the reference machine's L2/L3 cache and memory bandwidth; proportionally more expensive on an i3's smaller cache and often slower/single-channel RAM — but still two orders of magnitude below the ~400&nbsp;ms inference cost. <strong>Real, worth removing, not the bottleneck.</strong></p>
+
+    <h3>4 · VAD / endpointing</h3>
+    <div class="callout finding">
+      <span class="tag">Architectural finding</span>
+      <p>There is <strong>no separate VAD stage</strong> gating inference. <code>sidecar.py</code>'s worker loop calls <code>recognizer.decode_stream()</code> unconditionally on every audio chunk that arrives (<code>sidecar.py:222–225</code>) — silence and speech both reach the model. Endpointing (<code>is_endpoint</code>, rules 1–3) runs <em>after</em> decoding, to decide when to finalize, not whether to decode at all. This is priority item <strong>D</strong> in the brief, and it's real: every silent packet still pays a forward pass.</p>
+    </div>
+
+    <h3>5 · STT chunk formation</h3>
+    <p>No app-level chunking layer exists — whatever WASAPI hands over per packet goes straight to <code>sidecar.send_samples()</code>. The sherpa-onnx streaming model has its own internal frame/chunk semantics (80&nbsp;ms lookahead, baked into the exported model); REDLY doesn't batch multiple WASAPI packets before sending. This is priority item <strong>C</strong>'s actual target — but chunk size here means "how often do we call into the decoder," which is downstream of finding D.</p>
+
+    <h3>6 · Model inference — <strong>where the time actually goes</strong></h3>
+    <div class="callout finding">
+      <span class="tag">The bottleneck</span>
+      <p>Every latency number in this report — first-partial (~490&nbsp;ms), finalize (~360–400&nbsp;ms) — is dominated by the forward pass through the NeMo FastConformer encoder/decoder/joiner, not by anything upstream. Detailed evidence in §3.</p>
+    </div>
+
+    <h3>7–8 · First partial / final result</h3>
+    <p>Both are direct, unbuffered emissions the instant the decoder produces a hypothesis (<code>sidecar.py:235–239</code>) or an endpoint fires (<code>sidecar.py:227–232</code>). No queueing delay, no batching delay. Their latency <em>is</em> stage 6's latency plus a few milliseconds of JSON serialization over stdout.</p>
+
+    <h3>9 · UI delivery</h3>
+    <p>Sidecar → Rust reader thread → <code>crossbeam</code> channel → Tauri event → React re-render. Entirely event-driven, no polling, no artificial delay. Not measured in isolation this pass (no reason to suspect it — the architecture has no batching or timer anywhere in this leg), and not where an i3 would feel slow.</p>
+  </section>
+
+  <section id="bottleneck">
+    <h2><span class="num">03</span> The bottleneck, stated precisely</h2>
+    <p class="section-dek">Two independent lines of evidence, both already in <code>docs/stt-benchmark.md</code> and this pass's new sweep, point at the same place.</p>
+
+    <div class="table-wrap">
+      <table>
+        <caption>STT_NUM_THREADS sweep — reference machine, unconstrained (reconfirms Milestone 4a)</caption>
+        <thead>
+          <tr><th>Threads</th><th class="num">1st partial</th><th class="num">Finalize</th><th class="num">WER</th><th class="num">CPU % of machine</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>1</td><td class="num">501&nbsp;ms</td><td class="num">377&nbsp;ms</td><td class="num">1.8%</td><td class="num">1.5%</td></tr>
+          <tr><td>2</td><td class="num">493&nbsp;ms</td><td class="num">369&nbsp;ms</td><td class="num">1.8%</td><td class="num">17.3%</td></tr>
+          <tr class="hl"><td>4 (shipped)</td><td class="num">493&nbsp;ms</td><td class="num">353&nbsp;ms</td><td class="num">1.8%</td><td class="num">50.3%</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p><strong>Latency moves by single-digit milliseconds — noise — across a 4× change in thread count, while CPU cost scales almost linearly.</strong> If threads were the bottleneck, 1 thread would be dramatically slower than 4. It isn't. The ~350–500&nbsp;ms figure is a near-fixed cost: the encoder/decoder/joiner forward pass over the model's exported 80&nbsp;ms chunk size, plus greedy-search decode overhead — work that doesn't parallelize across more ONNX threads because the computation graph for one streaming chunk is inherently sequential (encoder → decoder → joiner, in that order, per frame).</p>
+
+    <div class="callout confirmed">
+      <span class="tag">Confirmed, not assumed</span>
+      <p>This directly satisfies the brief's instruction not to "simply reduce STT threads and call the problem solved" — the data shows reducing threads doesn't cost latency, but it also doesn't <em>buy</em> any. The win from fewer threads is CPU headroom, not speed. That headroom is real and useful (see §5, items E–F) — it just isn't a latency fix on its own.</p>
+    </div>
+  </section>
+
+  <section id="methodology">
+    <h2><span class="num">04</span> Low-end simulation method — and where it broke</h2>
+    <p class="section-dek">No real i3 hardware was available. Two simulation approaches were attempted; only one produced trustworthy numbers. Reporting the failure is part of the finding.</p>
+
+    <h3>Approach 1 — ONNX thread-count capping <span style="color:var(--confirmed); font-weight:600;">(valid)</span></h3>
+    <p><code>STT_NUM_THREADS</code> genuinely constrains ONNX Runtime's own internal thread pool — this is the mechanism the shipped app already uses, so capping it is a faithful simulation of "a CPU with fewer execution units available to the model," even on fast host hardware. All thread-count numbers in this report use this method.</p>
+
+    <h3>Approach 2 — Windows process-affinity masking <span style="color:var(--bottleneck); font-weight:600;">(attempted, unreliable — do not trust)</span></h3>
+    <p>To simulate genuine OS-level core scarcity (not just ONNX's thread pool), the benchmark's Python process was launched and its <code>ProcessorAffinity</code> pinned externally to 4 and then 2 logical processors via .NET's <code>System.Diagnostics.Process</code>, mimicking a 4c/4t or 2c/4t i3.</p>
+    <pre><code>PID=24060 affinity=3        ← set successfully, immediately after
+t=300ms  affinity=65535     ← reverted to all 16 logical processors
+t=600ms  affinity=65535     ← stayed reverted for the rest of the run</code></pre>
+    <div class="callout caveat">
+      <span class="tag">Root cause found</span>
+      <p><code>numpy/_core/__init__.py</code> sets <code>OPENBLAS_MAIN_FREE=1</code> on import, specifically to undo OpenBLAS's own default of pinning the process to one core. The side effect observed here: it also silently discards any <em>externally applied</em> affinity mask, snapping the process back to all cores within one sampling interval. This is documented numpy/OpenBLAS behavior, not a scripting mistake — but it means <strong>affinity-based simulation does not hold</strong> for this dependency stack (sherpa-onnx → onnxruntime → numpy).</p>
+    </div>
+    <p>Consequence: every "i3" number in this report comes from Approach 1 (thread-count capping) only. No number in this report should be read as "measured with genuinely fewer CPU cores available" — that would need real hardware, or a lower-level mechanism (a Windows Job Object CPU-rate limit applied before the Python interpreter starts, not attempted this pass).</p>
+  </section>
+
+  <section id="candidates">
+    <h2><span class="num">05</span> Candidate optimizations, benchmarked or reasoned through</h2>
+    <p class="section-dek">In the priority order given. Each carries a verdict — recommend, investigate further, defer, or reject — based on what was actually measured, not assumed.</p>
+
+    <div class="priority-list">
+      <div class="priority-item">
+        <div class="letter">A</div>
+        <div class="body"><h4>Keep the model warm</h4><p>Already true. Model loads once at sidecar startup (~1.2–1.3&nbsp;s, paid once per recording session) and is reused for the process lifetime; between utterances only <code>recognizer.reset(stream)</code> runs — a cheap state clear, not a reload. Nothing to change.</p></div>
+        <div class="verdict-pill recommend">Already done</div>
+      </div>
+      <div class="priority-item">
+        <div class="letter">B</div>
+        <div class="body"><h4>Reduce buffering copies/allocations</h4><p>3–4 heap allocations per ~20&nbsp;ms audio packet in <code>resample.rs</code>, confirmed by code read (§2.3). Real cost, disproportionately worse on an i3-class cache/memory subsystem, but two orders of magnitude below the inference cost — won't move first-partial/final numbers on its own.</p></div>
+        <div class="verdict-pill investigate">Worth doing, won't fix latency alone</div>
+      </div>
+      <div class="priority-item">
+        <div class="letter">C</div>
+        <div class="body"><h4>Optimize chunk size</h4><p>The model's chunk size (80&nbsp;ms) is baked into the exported ONNX graph — not a runtime parameter. The only "chunk size" REDLY controls is how often WASAPI packets are forwarded, which is already immediate (no app-level batching delay exists to remove).</p></div>
+        <div class="verdict-pill reject">No app-level lever exists</div>
+      </div>
+      <div class="priority-item">
+        <div class="letter">D</div>
+        <div class="body"><h4>VAD should skip inference during silence</h4><p>Confirmed gap (§2.4): every chunk decodes, silent or not. A pre-inference energy gate could cut wasted forward passes during dead air — real CPU savings on a constrained core count. Not yet benchmarked; needs a prototype before claiming a number.</p></div>
+        <div class="verdict-pill investigate">Real gap — needs a prototype</div>
+      </div>
+      <div class="priority-item">
+        <div class="letter">E</div>
+        <div class="body"><h4>Give STT scheduling priority</h4><p>No process/thread priority control exists anywhere in the codebase today (confirmed by search — zero hits for Windows priority-class APIs). A real gap on a 2–4 core machine where the OS scheduler has much less slack to hide contention.</p></div>
+        <div class="verdict-pill investigate">Real gap — unimplemented</div>
+      </div>
+      <div class="priority-item">
+        <div class="letter">F</div>
+        <div class="body"><h4>Throttle RAG indexing during active STT</h4><p>Confirmed: RAG document upload/indexing is fully synchronous and blocks the single uvicorn worker (from Milestone 4a's investigation) — it can run concurrently with STT today with zero coordination between the two processes. The only other periodic background work is a 60&nbsp;s analytics flush (network I/O, not CPU-bound) — so this item's real target is narrow and specific: RAG indexing only.</p></div>
+        <div class="verdict-pill recommend">Confirmed gap, narrow fix</div>
+      </div>
+      <div class="priority-item">
+        <div class="letter">G</div>
+        <div class="body"><h4>Faster runtime / quantization options</h4><p>Model is already int8-quantized (confirmed file naming + <code>docs/stt-benchmark.md</code>). No fp32 variant exists to compare down from. A different runtime (e.g. whisper.cpp with more aggressive quantization) was already evaluated in the original engine bake-off and rejected for accuracy/latency reasons — re-litigating that choice is out of scope for this profiling pass per the "do not change STT model" instruction.</p></div>
+        <div class="verdict-pill defer">Already decided; out of scope here</div>
+      </div>
+      <div class="priority-item">
+        <div class="letter">H</div>
+        <div class="body"><h4>Hardware acceleration</h4><p>Checked and previously rejected: the installed <code>sherpa_onnx</code> wheel is CPU-only (not <code>sherpa-onnx-gpu</code>), and an i3 machine is exactly the profile <strong>least</strong> likely to carry a discrete GPU. Not revisited.</p></div>
+        <div class="verdict-pill reject">No GPU to accelerate on</div>
+      </div>
+      <div class="priority-item">
+        <div class="letter">I</div>
+        <div class="body"><h4>Benchmark 1 / 2 / 4 threads, don't assume</h4><p>Done — this is §3's core measurement. Result: thread count is a CPU-cost knob, not a latency knob, confirmed on this pass and consistent with Milestone 4a.</p></div>
+        <div class="verdict-pill recommend">Done — see §3</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="results">
+    <h2><span class="num">06</span> Benchmark results — full table</h2>
+    <div class="table-wrap">
+      <table>
+        <caption>All STT thread-count runs, this pass — synthetic corpus, production int8 model</caption>
+        <thead>
+          <tr><th>Config</th><th class="num">Load</th><th class="num">1st partial</th><th class="num">Finalize</th><th class="num">WER</th><th class="num">CPU % mach</th><th class="num">RSS Δ</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>1 thread, unconstrained</td><td class="num">1.8&nbsp;s</td><td class="num">501&nbsp;ms</td><td class="num">377&nbsp;ms</td><td class="num">1.8%</td><td class="num">1.5%</td><td class="num">225&nbsp;MB</td></tr>
+          <tr><td>2 threads, unconstrained</td><td class="num">1.2&nbsp;s</td><td class="num">493&nbsp;ms</td><td class="num">369&nbsp;ms</td><td class="num">1.8%</td><td class="num">17.3%</td><td class="num">225&nbsp;MB</td></tr>
+          <tr class="hl"><td>4 threads, unconstrained (shipped)</td><td class="num">1.3&nbsp;s</td><td class="num">493&nbsp;ms</td><td class="num">353&nbsp;ms</td><td class="num">1.8%</td><td class="num">50.3%</td><td class="num">226&nbsp;MB</td></tr>
+          <tr><td>1 thread, ONNX-capped sim</td><td class="num">1.3&nbsp;s</td><td class="num">501&nbsp;ms</td><td class="num">377&nbsp;ms</td><td class="num">1.8%</td><td class="num">1.5%</td><td class="num">226&nbsp;MB</td></tr>
+          <tr><td>2 threads, ONNX-capped sim</td><td class="num">1.3&nbsp;s</td><td class="num">485&nbsp;ms</td><td class="num">353&nbsp;ms</td><td class="num">1.8%</td><td class="num">17.2%</td><td class="num">226&nbsp;MB</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="tight" style="font-size:13px; color:var(--muted);">Affinity-masked ("true i3 core count") rows omitted from this table — see §4's methodology finding. Their raw numbers matched the ONNX-capped rows almost exactly, which is itself consistent with the affinity constraint having silently failed to hold rather than confirming anything new.</p>
+  </section>
+
+  <section id="recommendation">
+    <h2><span class="num">07</span> Recommended changes — profiling-phase conclusion</h2>
+    <p class="section-dek">Per the brief: this is where the report stops. No STT architecture or model change ships from this pass without a follow-up decision.</p>
+    <ol class="clean">
+      <li><strong>Do not touch thread count as a latency fix.</strong> The data closes this question — it was already closed in Milestone 4a and this pass reconfirms it independently.</li>
+      <li><strong>Prototype VAD-gated inference (item D)</strong> — skip <code>decode_stream()</code> calls on chunks the endpointer's own silence detection would reject anyway. This is the most promising untried lever: it targets stage 6 (the actual bottleneck) by reducing <em>how often</em> the expensive forward pass runs, not by trying to make each pass faster.</li>
+      <li><strong>Implement RAG-vs-STT scheduling coordination (item F)</strong> — pause or de-prioritize document indexing while an STT session is active. Narrow, confirmed gap, low implementation risk since the two already run as separate processes.</li>
+      <li><strong>Investigate STT process priority (item E)</strong> — Windows <code>SetPriorityClass</code>/<code>THREAD_PRIORITY_TIME_CRITICAL</code> on the sidecar process, gated to low-tier hardware only. Needs a benchmark before shipping — priority boosting can starve the OS/UI thread if misapplied.</li>
+      <li><strong>Fix the allocation churn in <code>resample.rs</code> (item B)</strong> as a low-risk, always-safe cleanup — reuse buffers across calls instead of allocating per packet. Won't move the headline latency numbers; will reduce GC/allocator pressure that matters more on constrained RAM.</li>
+      <li><strong>Do not pursue G or H</strong> without new information — both were evaluated and closed by prior work or by this machine's own hardware profile.</li>
+    </ol>
+  </section>
+
+  <section id="i3-behavior">
+    <h2><span class="num">08</span> Expected behavior on real i3 + 8GB — with confidence levels</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Claim</th><th>Confidence</th><th>Basis</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>STT will still be usable at 1–2 threads</td><td class="flag-ok">High</td><td>Thread count doesn't move latency on the reference CPU; no reason the relationship inverts on a slower one</td></tr>
+          <tr><td>First-partial/final latency numbers will differ from this report's ~490&nbsp;ms/~360&nbsp;ms</td><td class="flag-ok">High (will be slower)</td><td>Same forward-pass cost on a lower-IPC, lower-clock CPU is necessarily slower wall-clock — magnitude unmeasured</td></tr>
+          <tr><td>RAM headroom is comfortable for STT alone</td><td class="flag-ok">High</td><td>~226&nbsp;MB flat footprint against 8&nbsp;GB is not tight in isolation</td></tr>
+          <tr><td>Concurrent RAG indexing is the more likely real-world stutter cause than STT itself</td><td class="flag-ok">Medium-high</td><td>Confirmed synchronous/blocking (§5.F); untested under combined load</td></tr>
+          <tr><td>VAD-gated inference will measurably reduce CPU load during silence</td><td class="flag-ok">Medium</td><td>Architecturally sound reasoning; not yet prototyped or benchmarked</td></tr>
+          <tr><td>Exact ms figures for a real i3</td><td class="flag-bottleneck">Not established</td><td>No real i3 hardware; affinity simulation failed (§4)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="impact">
+    <h2><span class="num">09</span> CPU / RAM / accuracy impact of what's recommended</h2>
+    <h3>If items D + F + E ship (pending their own benchmarks)</h3>
+    <ul class="clean">
+      <li><strong>CPU:</strong> lower average load during silence-heavy sessions (D); no CPU contention spikes from concurrent indexing (F); STT gets scheduler priority under contention (E) — net effect should be fewer stutters, not necessarily a lower peak.</li>
+      <li><strong>RAM:</strong> unaffected by D/E/F. Item B (allocation cleanup) reduces allocator churn, not steady-state RSS.</li>
+      <li><strong>Accuracy:</strong> zero impact expected from D/E/F/B — none touch the model, VAD thresholds, or endpointing rules. A VAD-gate prototype (D) would need an explicit regression test proving WER is unchanged before shipping, per the brief's own requirement.</li>
+    </ul>
+  </section>
+
+  <section id="files">
+    <h2><span class="num">10</span> Files that would change (if the above is approved)</h2>
+    <div class="file-list">
+      <div class="file-row"><code>packages/stt/streaming_asr_sidecar/sidecar.py</code><span class="why">VAD-gated inference (D) — additive, endpointing rules untouched</span></div>
+      <div class="file-row"><code>apps/desktop/src-tauri/src/audio/resample.rs</code><span class="why">buffer reuse (B) — no signature/behavior change</span></div>
+      <div class="file-row"><code>apps/desktop/src-tauri/src/stt/sidecar.rs</code><span class="why">process priority (E), gated to low tier via existing hardware module</span></div>
+      <div class="file-row"><code>apps/desktop/src-tauri/src/hardware/*</code><span class="why">tier-aware trigger for E/F, reusing Milestone 1–7 infrastructure</span></div>
+      <div class="file-row"><code>packages/rag/app/pipeline.py</code> or <code>apps/desktop/src-tauri/src/rag/process.rs</code><span class="why">indexing throttle (F) — exact location depends on chosen coordination mechanism</span></div>
+      <div class="file-row"><code>packages/stt-bench/</code><span class="why">new regression benchmarks for D/E/F before they ship</span></div>
+    </div>
+    <p style="font-size:13px; color:var(--muted);">No changes to the STT model file, VAD thresholds, endpointing rule constants, audio sample-rate/channel semantics, or any cloud LLM code — none are implicated by any recommended item.</p>
+  </section>
+
+  <footer class="report-footer">
+    Profiling phase complete — stopped here per instruction, pending review before any implementation begins.
+  </footer>
+</main>
+</div>
+</body>
+</html>

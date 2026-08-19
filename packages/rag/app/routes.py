@@ -11,6 +11,7 @@ from app.core.config import get_settings
 from app.models import DocumentType
 from app.pipeline import DocumentTooLargeError
 from app.state import get_knowledge_base, get_retriever
+from app import throttle
 
 logger = logging.getLogger("rag.api")
 
@@ -20,6 +21,23 @@ router = APIRouter()
 @router.get("/health")
 def health() -> dict:
     return {"status": "ok", "service": "interview-assistant-rag"}
+
+
+class ThrottleRequest(BaseModel):
+    active: bool
+
+
+@router.post("/internal/throttle")
+def set_throttle(request: ThrottleRequest) -> dict:
+    """Internal-only coordination endpoint (STT/RAG scheduling, Phase B —
+    see app/throttle.py's module doc) — not part of the RAG service's public
+    document/search API, called only by the desktop app's own Rust process
+    on localhost, never by the frontend directly. `active=True` must be
+    refreshed periodically or it auto-expires (dead-man's-switch, see
+    throttle.py) so a crashed STT session can never permanently starve
+    indexing."""
+    throttle.set_active(request.active)
+    return {"active": throttle.is_active()}
 
 
 @router.post("/documents/upload")

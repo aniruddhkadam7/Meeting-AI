@@ -42,6 +42,8 @@ from pathlib import Path
 
 import numpy as np
 
+from vad import EnergyVad, UtteranceGate, VadConfig
+
 # stdout is the wire protocol (one JSON object per line) and must never carry
 # anything else — diagnostic logging goes to stderr instead, which
 # apps/desktop/src-tauri/src/stt/sidecar.rs already reads and forwards to
@@ -66,6 +68,16 @@ SILENCE_NO_TEXT_S = 2.0
 # ONNX Runtime threads. Measured at 4: more threads did not reduce latency and
 # spent noticeably more CPU spinning, which matters on a normal laptop.
 DEFAULT_NUM_THREADS = 4
+
+# VAD gate: skips decode_stream() (the expensive FastConformer forward pass)
+# during confirmed silence. Does NOT skip accept_waveform() — audio is always
+# buffered — and does NOT participate in endpointing in any way; sherpa-onnx's
+# own rule1/rule2/rule3 (see build_recognizer) are the sole authority on when
+# an utterance ends. Overridable for tuning without a rebuild, same pattern
+# as every other sidecar knob. See docs/stt-performance-phase2.md for the
+# benchmark evidence behind this being worth doing.
+DEFAULT_VAD_ENABLED = True
+DEFAULT_VAD_HANGOVER_MS = 700
 
 
 
@@ -104,6 +116,17 @@ def _env_int(name: str, default: int, low: int, high: int) -> int:
         return max(low, min(high, int(raw)))
     except ValueError:
         return default
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name, "").strip().lower()
+    if not raw:
+        return default
+    if raw in ("1", "true", "yes", "on"):
+        return True
+    if raw in ("0", "false", "no", "off"):
+        return False
+    return default
 
 
 def _resolve_model_dir() -> Path:
@@ -163,6 +186,8 @@ def main() -> int:
         / 1000.0
     )
     num_threads = _env_int("STT_NUM_THREADS", DEFAULT_NUM_THREADS, 1, 16)
+    vad_enabled = _env_bool("STT_VAD_GATE_ENABLED", DEFAULT_VAD_ENABLED)
+    vad_hangover_ms = _env_int("STT_VAD_HANGOVER_MS", DEFAULT_VAD_HANGOVER_MS, 200, 5000)
     model_dir = _resolve_model_dir()
 
     if not model_dir.is_dir():
@@ -187,6 +212,7 @@ def main() -> int:
         "engine": "sherpa-onnx nemo-streaming-fast-conformer-80ms-int8",
         "end_silence_ms": int(end_silence_s * 1000),
         "num_threads": num_threads,
+        "vad_gate_enabled": vad_enabled,
     })
 
     audio_q: queue.Queue = queue.Queue()
@@ -194,6 +220,13 @@ def main() -> int:
     # flush path when a zero-length frame arrives.
     lock = threading.Lock()
     utterance_start = [None]
+    # `hangover_ms` deliberately longer than `end_silence_s` (see vad.py's
+    # VadConfig doc) so the VAD gate is never what decides an utterance is
+    # over — it only ever defers decode_stream() calls during silence that
+    # sherpa-onnx's own endpointer would also eventually call silence.
+    gate = UtteranceGate(EnergyVad(VadConfig(hangover_ms=vad_hangover_ms))) if vad_enabled else None
+    vad_skipped_frames = [0]
+    vad_decoded_frames = [0]
 
     def worker() -> None:
         last_partial = ""
@@ -204,7 +237,11 @@ def main() -> int:
 
             if item is FLUSH:
                 # Explicit flush from Rust (pause/stop): finalize whatever is
-                # pending so the last question is never left hanging.
+                # pending so the last question is never left hanging. Never
+                # gated by VAD — this is an explicit "finalize now" signal,
+                # not a normal audio chunk, so it always fully decodes
+                # whatever is buffered regardless of the gate's current
+                # speech/silence read.
                 with lock:
                     while recognizer.is_ready(stream):
                         recognizer.decode_stream(stream)
@@ -212,6 +249,8 @@ def main() -> int:
                     if text:
                         _emit_final(text)
                     recognizer.reset(stream)
+                    if gate is not None:
+                        gate.reset()
                     last_partial = ""
                 continue
 
@@ -221,18 +260,42 @@ def main() -> int:
 
             with lock:
                 stream.accept_waveform(16000, samples)
-                while recognizer.is_ready(stream):
-                    recognizer.decode_stream(stream)
 
-                if recognizer.is_endpoint(stream):
+                # VAD gate (packages/stt/streaming_asr_sidecar/vad.py's
+                # UtteranceGate): decide whether THIS chunk's audio is worth
+                # the cost of decode_stream() at all. `accept_waveform` above
+                # has already buffered the samples regardless of the gate's
+                # decision — skipping decode never drops audio, only defers
+                # it. See vad.py's module doc for the full correctness
+                # rationale (in particular: why this only ever skips decode
+                # BEFORE speech starts in an utterance, never during/after —
+                # an earlier, more aggressive design regressed finalize
+                # latency 353ms -> 2865ms by starving sherpa-onnx's own
+                # endpointer of the decoded frames it needs to fire).
+                should_decode = gate.observe(samples) if gate is not None else True
+                if gate is not None:
+                    if should_decode:
+                        vad_decoded_frames[0] += 1
+                    else:
+                        vad_skipped_frames[0] += 1
+
+                if should_decode:
+                    while recognizer.is_ready(stream):
+                        recognizer.decode_stream(stream)
+
+                    if recognizer.is_endpoint(stream):
+                        text = recognizer.get_result(stream).strip()
+                        if text:
+                            _emit_final(text)
+                        recognizer.reset(stream)
+                        if gate is not None:
+                            gate.reset()
+                        last_partial = ""
+                        continue
+
                     text = recognizer.get_result(stream).strip()
-                    if text:
-                        _emit_final(text)
-                    recognizer.reset(stream)
-                    last_partial = ""
-                    continue
-
-                text = recognizer.get_result(stream).strip()
+                else:
+                    text = last_partial
 
             if text and text != last_partial:
                 emit({"type": "partial", "text": text, "source": source})
@@ -275,6 +338,14 @@ def main() -> int:
         audio_q.put(FLUSH)
         audio_q.put(SHUTDOWN)
         worker_thread.join(timeout=15.0)
+        if vad_enabled:
+            decoded, skipped = vad_decoded_frames[0], vad_skipped_frames[0]
+            total = decoded + skipped
+            skip_pct = (skipped / total * 100.0) if total else 0.0
+            logging.getLogger("stt.vad").info(
+                "gate summary: decoded=%d skipped=%d (%.1f%% of chunks skipped)",
+                decoded, skipped, skip_pct,
+            )
 
     return 0
 

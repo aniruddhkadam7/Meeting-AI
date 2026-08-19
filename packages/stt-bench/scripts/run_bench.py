@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from dataclasses import replace
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -43,6 +44,14 @@ ENGINES: dict[str, callable] = {
     ),
     "nemo-80ms": lambda: sherpa_streaming.SherpaStreamingSTT(
         sherpa_streaming.NEMO_FASTCONFORMER_80
+    ),
+    # STT low-end optimization Phase A: same production model/config as
+    # "nemo-80ms" above, with the VAD gate (packages/stt/streaming_asr_
+    # sidecar/vad.py's production integration, mirrored here) enabled — lets
+    # this exact harness produce an apples-to-apples baseline-vs-gated
+    # comparison. See docs/stt-performance-phase2.md.
+    "nemo-80ms-vad": lambda: sherpa_streaming.SherpaStreamingSTT(
+        replace(sherpa_streaming.NEMO_FASTCONFORMER_80, vad_gate_enabled=True)
     ),
     "nemo-480ms": lambda: sherpa_streaming.SherpaStreamingSTT(
         sherpa_streaming.NEMO_FASTCONFORMER_480

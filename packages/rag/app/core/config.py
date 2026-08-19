@@ -33,6 +33,17 @@ class Settings:
     chunk_size_tokens: int = int(os.getenv("CHUNK_SIZE_TOKENS", "650"))
     chunk_overlap_tokens: int = int(os.getenv("CHUNK_OVERLAP_TOKENS", "80"))
 
+    # Hardware-tier-driven (see apps/desktop/src-tauri/src/hardware/manager.rs
+    # and docs/performance-tuning.md's RAG sweep). Read once at process
+    # startup like everything else in this class — a performance-mode change
+    # that alters these requires restarting this service, since torch's
+    # thread count and this class's values are both fixed after first use.
+    # Defaults (4 threads, batch 32) match this file's pre-tiering behavior:
+    # torch's own default thread count on the benchmark machine, and
+    # sentence-transformers' library default batch size.
+    embed_batch_size: int = int(os.getenv("RAG_EMBED_BATCH_SIZE", "32"))
+    torch_threads: int = int(os.getenv("RAG_TORCH_THREADS", "4"))
+
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
 
     @property

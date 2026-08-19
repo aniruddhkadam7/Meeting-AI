@@ -28,6 +28,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from .. import models
+from ..vad import EnergyVad, UtteranceGate, VadConfig
 from .base import EngineInfo, EngineUnavailable, EventKind, STTEngine, SttEvent
 
 
@@ -44,6 +45,16 @@ class StreamingConfig:
     num_threads: int = 4
     strategy: str = "native streaming transducer"
     notes: str = ""
+    #: STT low-end optimization Phase A: gate decode_stream() calls on a
+    #: cheap energy VAD during confirmed silence. Mirrors
+    #: packages/stt/streaming_asr_sidecar's production integration exactly
+    #: (same vad.py logic, same "accept_waveform always, decode_stream only
+    #: when in_speech" contract) so this benchmark measures the real
+    #: behavior, not an approximation of it. Off by default so every
+    #: existing benchmark/candidate comparison in this package is
+    #: unaffected unless explicitly opted into.
+    vad_gate_enabled: bool = False
+    vad_hangover_ms: int = 700
 
 
 class SherpaStreamingSTT(STTEngine):
@@ -58,6 +69,9 @@ class SherpaStreamingSTT(STTEngine):
         self._stop_flag = threading.Event()
         self._model_bytes = 0
         self._audio_time_s = 0.0
+        self._gate: UtteranceGate | None = None
+        self.vad_decoded_chunks = 0
+        self.vad_skipped_chunks = 0
 
     @property
     def info(self) -> EngineInfo:
@@ -119,6 +133,13 @@ class SherpaStreamingSTT(STTEngine):
         self._events_q = queue.Queue()
         self._stop_flag = threading.Event()
         self._audio_time_s = 0.0
+        self._gate = (
+            UtteranceGate(EnergyVad(VadConfig(hangover_ms=self._config.vad_hangover_ms)))
+            if self._config.vad_gate_enabled
+            else None
+        )
+        self.vad_decoded_chunks = 0
+        self.vad_skipped_chunks = 0
 
         self._worker = threading.Thread(
             target=self._run_worker, name=f"sherpa-{key}", daemon=True
@@ -174,6 +195,9 @@ class SherpaStreamingSTT(STTEngine):
 
         while not finished:
             item = self._audio_q.get()
+            # `None` (stream ending) always fully decodes, same as
+            # sidecar.py's FLUSH handling — never gated by the VAD gate.
+            should_decode = True
             if item is None:
                 stream.input_finished()
                 finished = True
@@ -181,6 +205,15 @@ class SherpaStreamingSTT(STTEngine):
             else:
                 samples, audio_time = item
                 stream.accept_waveform(16000, samples)
+                if self._gate is not None:
+                    should_decode = self._gate.observe(samples)
+                    if should_decode:
+                        self.vad_decoded_chunks += 1
+                    else:
+                        self.vad_skipped_chunks += 1
+
+            if not should_decode:
+                continue
 
             while recognizer.is_ready(stream):
                 recognizer.decode_stream(stream)
@@ -194,6 +227,8 @@ class SherpaStreamingSTT(STTEngine):
                 if text:
                     self._emit(EventKind.FINAL, text, audio_time)
                 recognizer.reset(stream)
+                if self._gate is not None:
+                    self._gate.reset()
                 last_partial = ""
                 continue
 

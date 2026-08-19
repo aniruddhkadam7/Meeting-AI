@@ -5,8 +5,6 @@
 //! overlay), parameterized by the `Agent` record looked up from
 //! `AgentStore` instead of hardcoded per-mode request fields.
 
-use std::time::Duration;
-
 use tauri::{AppHandle, Emitter, State};
 
 use crate::backend::{
@@ -18,8 +16,9 @@ use crate::rag::RetrievalPlanner;
 use super::model::{Agent, AnswerFormat, AnswerLength, LiveAssistance, Personalization, ResponseStyle};
 use super::store::AgentStore;
 
-const AGENT_TOP_K: u32 = 3;
-const RETRIEVAL_TIMEOUT: Duration = Duration::from_millis(1_200);
+// Retrieval's top_k/similarity_threshold/max_context_chars/timeout are all
+// hardware-tier-driven (hardware::PerformanceManager::effective_config) —
+// see hardware::manager for the tier table.
 const MAX_HISTORY_TURNS: usize = 6;
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -124,6 +123,10 @@ pub async fn ask_agent_question(
     question: String,
     history: Option<Vec<PriorTurn>>,
 ) -> Result<String, String> {
+    use crate::hardware::telemetry::{finish, FirstTokenTracker, PipelineStage, Stopwatch};
+
+    let question_to_answer = Stopwatch::start();
+
     let trimmed = question.trim();
     if trimmed.is_empty() {
         return Err("no question text to send".into());
@@ -135,11 +138,15 @@ pub async fn ask_agent_question(
     // Scoped to this agent's own knowledge base only — never the global KB
     // or another agent's documents. See rag::RetrievalPlanner::with_agent_scope
     // and packages/rag's agent_id column.
+    // `_checked`: natural per-question memory-pressure checkpoint.
+    let cfg = crate::hardware::effective_config_checked(&app);
     let planner = RetrievalPlanner::new()
-        .with_config(AGENT_TOP_K, 0.3, 3_000)
-        .with_timeout(RETRIEVAL_TIMEOUT)
+        .with_config(cfg.rag_top_k, cfg.rag_similarity_threshold, cfg.rag_max_context_chars)
+        .with_timeout(std::time::Duration::from_millis(cfg.rag_retrieval_timeout_ms))
         .with_agent_scope(agent.id.clone());
+    let retrieval_timer = Stopwatch::start();
     let retrieved = planner.plan_for_question(trimmed).await;
+    finish(retrieval_timer, PipelineStage::RagRetrieval, &crate::hardware::perf_context(&app));
 
     let request = AgentAskRequest {
         agent_id: agent.id.clone(),
@@ -163,11 +170,22 @@ pub async fn ask_agent_question(
 
     let client = BackendClient::new();
     let app_for_events = app.clone();
+    let llm_timer = Stopwatch::start();
+    let first_token = FirstTokenTracker::new();
+    let first_token_recorder = first_token.recorder();
     let answer = client
         .agent_ask_stream(&request, move |delta| {
+            first_token_recorder.mark();
             let _ = app_for_events.emit("agent:answer-delta", delta);
         })
         .await?;
+
+    let ctx = crate::hardware::perf_context(&app);
+    if let Some(ms) = first_token.elapsed_ms() {
+        crate::hardware::telemetry::log_stage_ms(PipelineStage::LlmFirstToken, ms, &ctx);
+    }
+    finish(llm_timer, PipelineStage::LlmTotal, &ctx);
+    finish(question_to_answer, PipelineStage::QuestionToAnswer, &ctx);
 
     let _ = app.emit("agent:answer-complete", &answer);
     Ok(answer)

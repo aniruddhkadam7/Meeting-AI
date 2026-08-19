@@ -32,7 +32,17 @@ tauri-plugin-dialog = "2.7.2"
 tauri-plugin-fs = "2.5.1"
 reqwest = { version = "0.13.4", default-features = false, features = ["json", "blocking", "multipart", "stream"] }
 futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
-windows = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }
+windows = { version = "0.61", features = [
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Foundation",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Ioctl",
+    "Win32_System_IO",
+    "Win32_Security",
+] }
+sysinfo = "0.32"
 tauri-plugin-global-shortcut = "2.3.2"
 tauri-plugin-updater = "2"
 keyring = "3"

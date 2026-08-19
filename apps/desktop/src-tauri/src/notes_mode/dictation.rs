@@ -55,8 +55,21 @@ pub fn start_note_dictation(
     let (stt_tx, stt_rx) = std::sync::mpsc::channel();
     let stop = StopSignal::new();
 
+    let session_start = crate::hardware::telemetry::Stopwatch::start();
     let mic_thread = MicrophoneCapture::start(audio_tx, stop.clone())?;
-    let mut sidecar = SttSidecar::spawn(AudioSource::Microphone, stt_tx)?;
+    // `_checked`: same reasoning as start_system_audio_capture — dictation
+    // session start is a natural memory-pressure checkpoint.
+    let stt_num_threads = crate::hardware::effective_config_checked(&app).stt_num_threads;
+    let mut sidecar = SttSidecar::spawn(AudioSource::Microphone, stt_tx, Some(stt_num_threads))?;
+    crate::hardware::telemetry::finish(
+        session_start,
+        crate::hardware::telemetry::PipelineStage::SttSessionStart,
+        &crate::hardware::perf_context(&app),
+    );
+    // STT/RAG scheduling coordination (Phase B): see
+    // hardware::stt_rag_coordination's module doc — no-op on
+    // Performance/HighPerformance tier or in MaximumPerformance mode.
+    crate::hardware::stt_rag_coordination::on_stt_session_started(&app);
 
     // The events thread re-fetches the managed `DictationBuffer` from the
     // `AppHandle` (rather than capturing `buffer` directly) since Tauri
@@ -109,6 +122,7 @@ pub fn start_note_dictation(
 /// frontend can append it to the active note.
 #[tauri::command]
 pub fn stop_note_dictation(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     session: State<'_, DictationSession>,
     buffer: State<'_, DictationBuffer>,
@@ -129,6 +143,11 @@ pub fn stop_note_dictation(
         let mut capture = state.notes_dictation.lock().map_err(|e| e.to_string())?;
         capture.recording_state = crate::transcript::RecordingState::Stopped;
     }
+
+    // STT/RAG scheduling coordination (Phase B): releases this session's
+    // throttle contribution. See hardware::stt_rag_coordination's module
+    // doc — safe no-op if this session never activated it.
+    crate::hardware::stt_rag_coordination::on_stt_session_ended(&app);
 
     let text = {
         let buf = buffer.0.lock().map_err(|e| e.to_string())?;

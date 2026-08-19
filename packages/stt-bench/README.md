@@ -50,6 +50,19 @@ Audio is fed at **1x real time** in 100 ms chunks. An engine cannot look fast by
 being handed the file all at once, and one that cannot keep up shows it as
 growing lag rather than as a short total runtime.
 
+## Sweeping STT_NUM_THREADS
+
+```powershell
+py -3 scripts\run_thread_sweep.py --threads 1 2 4 6 8 --corpus corpus\synthetic
+```
+
+Runs the production `nemo-80ms` engine at each thread count in its own
+subprocess (clean CPU/RAM baseline per run) and reports first-partial/
+finalize latency, WER, RAM, and CPU-of-machine per thread count. Built to
+validate (or correct) the hardware-adaptive tier table in
+`apps/desktop/src-tauri/src/hardware/manager.rs` — see
+`docs/performance-tuning.md` for the results and what they changed.
+
 ## Checking that an engine really streams
 
 ```powershell

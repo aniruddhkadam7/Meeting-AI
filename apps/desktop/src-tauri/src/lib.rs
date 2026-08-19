@@ -10,6 +10,10 @@ mod backend;
 mod cloud_sync;
 mod commands;
 mod consulting_mode;
+// Public so the RAG/STT spawn call sites and the `rag-bench`/`stt-bench`
+// verification steps (Milestone 4a) can reference `PerformanceConfig`
+// without a re-export chain.
+pub mod hardware;
 mod history;
 mod interview_mode;
 mod notes_mode;
@@ -59,7 +63,22 @@ pub fn run() {
         .manage(agents::store::AgentStore::default())
         .manage(agents::history::AgentHistoryStore::default())
         .manage(analytics::AnalyticsQueue::default())
+        .manage(hardware::stt_rag_coordination::SttRagCoordination::default())
         .setup(|app| {
+            // Hardware detection + performance mode load first, synchronously
+            // — cheap (a few sysinfo/DXGI/IOCTL calls, no network/process
+            // spawn), and the RAG service spawn below reads the resulting
+            // tier config for its embedding batch size / torch thread count.
+            let performance_state = hardware::init(&app.handle().clone());
+            let initial_embed_config = {
+                let cfg = performance_state.0.lock().unwrap().effective_config();
+                rag::EmbedProcessConfig {
+                    embed_batch_size: cfg.rag_embed_batch_size,
+                    torch_threads: cfg.rag_torch_threads,
+                }
+            };
+            app.manage(performance_state);
+
             use tauri_plugin_global_shortcut::GlobalShortcutExt;
             // Ctrl+Shift+Space: show/hide the Interview Mode overlay (spec
             // section 19/21). Registration failure (e.g. the combination is
@@ -73,7 +92,7 @@ pub fn run() {
             // is still starting up or if it's unavailable entirely (see
             // rag::process::RagServiceHandle::spawn).
             let handle = app.handle().clone();
-            std::thread::spawn(move || match rag::RagServiceHandle::spawn() {
+            std::thread::spawn(move || match rag::RagServiceHandle::spawn(initial_embed_config) {
                 Ok(service) => {
                     if service.is_some() {
                         rag::wait_until_healthy_default();
@@ -199,6 +218,9 @@ pub fn run() {
             cloud_sync::commands::sync_agents_now,
             updater::check_for_update,
             updater::install_update_and_restart,
+            hardware::commands::get_hardware_profile,
+            hardware::commands::get_performance_mode,
+            hardware::commands::set_performance_mode,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

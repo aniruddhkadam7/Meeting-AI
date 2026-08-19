@@ -114,3 +114,42 @@ class EnergyVad:
                     self._silence_ms = 0
 
         return self._in_speech
+
+
+class UtteranceGate:
+    """Stateful wrapper around `EnergyVad` implementing the STT low-end
+    optimization Phase A decode-skipping rule (see
+    packages/stt/streaming_asr_sidecar/vad.py, this package's production
+    counterpart — kept in sync by hand since the two packages are separate
+    venvs/deployments): skip `decode_stream()` only before any speech has
+    been observed in the current utterance; once speech starts, always
+    decode until the caller resets the gate (on endpoint fire or explicit
+    flush/stream-end).
+
+    Why not gate on silence AFTER speech too (the naive, more aggressive
+    design): sherpa-onnx's endpoint detection measures trailing silence
+    against DECODED audio, not wall-clock time, so skipping decode during
+    post-speech silence starves the endpointer of the evaluation it needs
+    to ever fire. Measured regression when this was tried:
+    finalize latency 353ms -> 2865ms, WER unchanged. See
+    docs/stt-performance-phase2.md for the full benchmark evidence.
+    """
+
+    def __init__(self, vad: EnergyVad) -> None:
+        self._vad = vad
+        self._utterance_has_speech = False
+
+    def observe(self, samples: np.ndarray) -> bool:
+        """Feeds `samples` to the underlying VAD and returns whether the
+        caller should run decode_stream() for this chunk. Caller is
+        responsible for calling accept_waveform() unconditionally — this
+        method never touches the recognizer/stream."""
+        frame_results = self._vad.process(samples)
+        if frame_results and any(is_speech for is_speech, _ in frame_results):
+            self._utterance_has_speech = True
+        return self._utterance_has_speech or self._vad.in_speech or not frame_results
+
+    def reset(self) -> None:
+        """Call on endpoint fire or explicit flush/stream-end."""
+        self._vad.reset()
+        self._utterance_has_speech = False

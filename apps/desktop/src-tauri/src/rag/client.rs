@@ -156,6 +156,30 @@ impl RagClient {
         parse_response_or_error(response).await
     }
 
+    /// STT/RAG scheduling coordination (Phase B — see
+    /// packages/rag/app/throttle.py's module doc). `active=true` tells the
+    /// RAG service's embedding step to yield while STT is running on
+    /// low-end hardware; must be refreshed periodically while STT stays
+    /// active (see `hardware::stt_rag_coordination`) or it auto-expires on
+    /// the RAG side. Never affects `/search` — only the embedding step
+    /// inside document upload/indexing checks this.
+    pub async fn set_throttle(&self, active: bool) -> Result<(), String> {
+        let url = format!("{}/internal/throttle", self.base_url);
+        let response = self
+            .http
+            .post(&url)
+            .timeout(Duration::from_secs(3))
+            .json(&serde_json::json!({ "active": active }))
+            .send()
+            .await
+            .map_err(|e| format!("failed to reach RAG service: {e}"))?;
+        if response.status().is_success() {
+            Ok(())
+        } else {
+            Err(format!("failed to set RAG throttle: {}", response.status()))
+        }
+    }
+
     pub async fn search(&self, query: &str, top_k: u32, agent_id: Option<&str>) -> Result<SearchResponse, String> {
         self.search_with_timeout(query, top_k, agent_id, None).await
     }

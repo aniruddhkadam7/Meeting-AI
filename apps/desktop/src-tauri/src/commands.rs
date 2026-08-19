@@ -57,9 +57,26 @@ pub fn start_system_audio_capture(
     let stop = StopSignal::new();
     let pause = PauseSignal::new();
 
+    let session_start = crate::hardware::telemetry::Stopwatch::start();
     let audio_thread = SystemAudioCapture::start(audio_tx, stop.clone())?;
 
-    let mut sidecar = SttSidecar::spawn(AudioSource::SystemAudio, stt_tx)?;
+    // `_checked`: this is a natural checkpoint (recording session start) —
+    // feeds a fresh RAM reading into the sustained-pressure tracker, which
+    // may clamp `stt_num_threads` down if the machine has been under
+    // memory pressure across the last couple of checkpoints (see
+    // hardware::pressure). Any resulting downgrade/restoration is logged
+    // from within effective_config_checked itself.
+    let stt_num_threads = crate::hardware::effective_config_checked(&app).stt_num_threads;
+    let mut sidecar = SttSidecar::spawn(AudioSource::SystemAudio, stt_tx, Some(stt_num_threads))?;
+    crate::hardware::telemetry::finish(
+        session_start,
+        crate::hardware::telemetry::PipelineStage::SttSessionStart,
+        &crate::hardware::perf_context(&app),
+    );
+    // STT/RAG scheduling coordination (Phase B): signals RAG indexing to
+    // yield while this session runs, on Entry/Standard tier only (no-op
+    // otherwise) — see hardware::stt_rag_coordination's module doc.
+    crate::hardware::stt_rag_coordination::on_stt_session_started(&app);
 
     let app_for_pipeline = app.clone();
     let pause_for_pipeline = pause.clone();
@@ -75,7 +92,35 @@ pub fn start_system_audio_capture(
             let events_thread = std::thread::Builder::new()
                 .name("stt-events-forwarder".into())
                 .spawn(move || {
+                    // First-partial/first-final latency, measured from this
+                    // forwarder thread's own start (which begins essentially
+                    // at session start) to the first occurrence of each
+                    // event kind — the number the user actually experiences
+                    // (audio flowing -> text appearing), not a cross-process
+                    // clock reconciliation with the Python sidecar's own
+                    // monotonic timestamps.
+                    let stt_clock = crate::hardware::telemetry::Stopwatch::start();
+                    let mut first_partial_logged = false;
+                    let mut first_final_logged = false;
+
                     for event in stt_rx.iter() {
+                        if !first_partial_logged && event.kind == crate::stt::SttEventKind::Partial {
+                            first_partial_logged = true;
+                            crate::hardware::telemetry::log_stage_ms(
+                                crate::hardware::telemetry::PipelineStage::SttFirstPartial,
+                                stt_clock.elapsed().as_millis(),
+                                &crate::hardware::perf_context(&stt_events_app),
+                            );
+                        }
+                        if !first_final_logged && event.kind == crate::stt::SttEventKind::Final {
+                            first_final_logged = true;
+                            crate::hardware::telemetry::log_stage_ms(
+                                crate::hardware::telemetry::PipelineStage::SttFinal,
+                                stt_clock.elapsed().as_millis(),
+                                &crate::hardware::perf_context(&stt_events_app),
+                            );
+                        }
+
                         let state = stt_events_app.state::<AppState>();
                         let segment = state
                             .transcript
@@ -239,6 +284,12 @@ pub fn stop_audio_capture(app: tauri::AppHandle, state: State<'_, AppState>) -> 
         let mut transcript = state.transcript.lock().map_err(|e| e.to_string())?;
         transcript.mark_stopped();
     }
+
+    // STT/RAG scheduling coordination (Phase B): releases the throttle this
+    // session may have activated. Safe no-op if it never did (different
+    // tier/mode, or this call races a start that hasn't incremented yet —
+    // see on_stt_session_ended's own guard against underflow).
+    crate::hardware::stt_rag_coordination::on_stt_session_ended(&app);
 
     let _ = app.emit(
         "recording:state",
@@ -476,7 +527,18 @@ pub async fn analyze_interview(
 
     let qa_pairs = crate::analyzer::extract_question_answers(&session);
 
-    let planner = crate::rag::RetrievalPlanner::new();
+    // Tier-driven top_k/similarity_threshold/max_context_chars, but no
+    // `.with_timeout()` — this offline analysis path intentionally keeps the
+    // client's generous default HTTP budget rather than the tight
+    // live-answer timeout, since there's no user waiting on an immediate
+    // answer here. `_checked` once here (not per qa_pair in the loop below)
+    // — analysis-start is the checkpoint, not each of its many retrievals.
+    let cfg = crate::hardware::effective_config_checked(&app);
+    let planner = crate::rag::RetrievalPlanner::new().with_config(
+        cfg.rag_top_k,
+        cfg.rag_similarity_threshold,
+        cfg.rag_max_context_chars,
+    );
     let mut wire_question_answers = Vec::with_capacity(qa_pairs.len());
     for pair in &qa_pairs {
         let results = planner.plan_for_question(&pair.question).await;

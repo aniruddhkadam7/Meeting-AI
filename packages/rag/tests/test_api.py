@@ -87,6 +87,56 @@ def test_delete_document(tmp_path):
     assert list_response.json()["documents"] == []
 
 
+def test_internal_throttle_route_activates_and_deactivates(tmp_path):
+    """STT/RAG scheduling coordination (Phase B) — the internal endpoint
+    Rust calls to signal STT is active/inactive on low-end hardware."""
+    import app.throttle as throttle_module
+
+    client = _isolated_client(tmp_path)
+    try:
+        response = client.post("/internal/throttle", json={"active": True})
+        assert response.status_code == 200
+        assert response.json()["active"] is True
+        assert throttle_module.is_active() is True
+
+        response = client.post("/internal/throttle", json={"active": False})
+        assert response.status_code == 200
+        assert response.json()["active"] is False
+        assert throttle_module.is_active() is False
+    finally:
+        throttle_module.set_active(False)  # don't leak state into other tests
+
+
+def test_search_is_never_throttled_even_while_stt_is_active(tmp_path):
+    """Requirement: active retrieval for a user question must NEVER be
+    affected by the STT throttle — only indexing (the embedding step inside
+    document upload) yields. This test proves /search's own request path
+    never calls wait_while_throttled() at all: it activates the throttle
+    with a deliberately long TTL/no auto-clear and confirms /search still
+    returns immediately rather than hanging."""
+    import time
+
+    import app.throttle as throttle_module
+
+    client = _isolated_client(tmp_path)
+    try:
+        client.post(
+            "/documents/upload",
+            files={"file": ("notes.txt", io.BytesIO(b"Some searchable content about RAG."), "text/plain")},
+            data={"document_type": "TECHNICAL_NOTES"},
+        )
+        throttle_module.set_active(True)  # simulate STT actively running
+
+        started = time.monotonic()
+        response = client.post("/search", json={"query": "RAG", "top_k": 3})
+        elapsed = time.monotonic() - started
+
+        assert response.status_code == 200
+        assert elapsed < 1.0, "search must never wait on the STT throttle"
+    finally:
+        throttle_module.set_active(False)
+
+
 def test_clear_knowledge_base(tmp_path):
     client = _isolated_client(tmp_path)
     client.post(

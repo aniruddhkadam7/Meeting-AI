@@ -1,7 +1,10 @@
 //! Tauri commands for Interview Mode: overlay window lifecycle + the
 //! ASK AI flow (optional local RAG -> backend -> LLM -> streamed answer).
-
-use std::time::Duration;
+//!
+//! Retrieval's top_k/similarity_threshold/max_context_chars/timeout are all
+//! hardware-tier-driven (`hardware::PerformanceManager::effective_config`)
+//! rather than hardcoded here — see `hardware::manager` for the tier table
+//! and docs/performance-tuning.md for the benchmark evidence behind it.
 
 use tauri::{AppHandle, Emitter, State};
 
@@ -10,18 +13,6 @@ use crate::rag::RetrievalPlanner;
 use crate::state::AppState;
 
 use super::window::{self, OverlayCaptureStatus};
-
-/// TOP_K for Interview Mode's live retrieval — deliberately smaller than the
-/// full analysis pipeline's default (5): keep the prompt small and fast for a
-/// live interaction.
-const INTERVIEW_MODE_TOP_K: u32 = 3;
-
-/// Hard cap on the retrieval step. Retrieved context is optional
-/// personalization, so a RAG service that is slow, still warming up its
-/// embedding model, or simply not running must cost a fraction of a second
-/// and then be skipped — never delay the answer the user is waiting on
-/// mid-interview.
-const RETRIEVAL_TIMEOUT: Duration = Duration::from_millis(1_200);
 
 /// Answer-shaping options chosen in the overlay's settings panel. Everything
 /// is optional: `Default` reproduces the plain "natural, default length"
@@ -169,6 +160,10 @@ pub async fn ask_interview_question(
     options: Option<AskOptions>,
     history: Option<Vec<PriorTurn>>,
 ) -> Result<String, String> {
+    use crate::hardware::telemetry::{finish, PipelineStage, Stopwatch};
+
+    let question_to_answer = Stopwatch::start();
+
     let trimmed = question.trim();
     if trimmed.is_empty() {
         return Err("no question text to send".into());
@@ -178,10 +173,19 @@ pub async fn ask_interview_question(
     let history = trim_history(history.unwrap_or_default());
 
     let retrieved = if retrieval_could_help(trimmed) {
+        // `_checked`: retrieval is asked once per question, so this is the
+        // natural per-question checkpoint for the memory-pressure tracker.
+        // The tracker's own hysteresis (2 consecutive low samples to enter
+        // pressure, 90s sustained recovery to exit) means being checked
+        // this often does not translate into frequent config changes.
+        let cfg = crate::hardware::effective_config_checked(&app);
         let planner = RetrievalPlanner::new()
-            .with_config(INTERVIEW_MODE_TOP_K, 0.3, 3_000)
-            .with_timeout(RETRIEVAL_TIMEOUT);
-        planner.plan_for_question(trimmed).await
+            .with_config(cfg.rag_top_k, cfg.rag_similarity_threshold, cfg.rag_max_context_chars)
+            .with_timeout(std::time::Duration::from_millis(cfg.rag_retrieval_timeout_ms));
+        let retrieval_timer = Stopwatch::start();
+        let results = planner.plan_for_question(trimmed).await;
+        finish(retrieval_timer, PipelineStage::RagRetrieval, &crate::hardware::perf_context(&app));
+        results
     } else {
         log::debug!("Interview Mode: skipping retrieval for conceptual question");
         Vec::new()
@@ -210,11 +214,22 @@ pub async fn ask_interview_question(
 
     let client = BackendClient::new();
     let app_for_events = app.clone();
+    let llm_timer = Stopwatch::start();
+    let first_token = crate::hardware::telemetry::FirstTokenTracker::new();
+    let first_token_recorder = first_token.recorder();
     let answer = client
         .ask_stream(&request, move |delta| {
+            first_token_recorder.mark();
             let _ = app_for_events.emit("interview-mode:answer-delta", delta);
         })
         .await?;
+
+    let ctx = crate::hardware::perf_context(&app);
+    if let Some(ms) = first_token.elapsed_ms() {
+        crate::hardware::telemetry::log_stage_ms(PipelineStage::LlmFirstToken, ms, &ctx);
+    }
+    finish(llm_timer, PipelineStage::LlmTotal, &ctx);
+    finish(question_to_answer, PipelineStage::QuestionToAnswer, &ctx);
 
     let _ = app.emit("interview-mode:answer-complete", &answer);
     Ok(answer)
