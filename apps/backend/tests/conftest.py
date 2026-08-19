@@ -25,3 +25,20 @@ os.environ.pop("ANTHROPIC_API_KEY", None)
 os.environ["SUPABASE_JWT_SECRET"] = "test-jwt-secret-for-unit-tests-only"
 os.environ.pop("SUPABASE_URL", None)
 os.environ.pop("SUPABASE_SERVICE_ROLE_KEY", None)
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _reset_llm_rate_limiter():
+    """TestClient requests all share one `request.client.host`, so without
+    this every test file would draw down the same rate-limit bucket
+    (app/core/rate_limit.py) and the suite would start failing with 429s
+    once enough LLM-route tests run in one process — not a real limit being
+    hit, just cross-test bucket sharing. Reset before every test so each one
+    starts with a fresh budget; test_rate_limit.py exercises the real
+    enforcement behavior directly against a fresh limiter instance."""
+    from app.core.rate_limit import llm_rate_limiter
+
+    llm_rate_limiter._hits.clear()
+    yield

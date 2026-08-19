@@ -26,13 +26,20 @@ from app.core.config import get_settings
 
 settings = get_settings()
 
+if not settings.internal_auth_token:
+    logging.getLogger("rag").warning(
+        "RAG_INTERNAL_TOKEN is not set — this instance accepts requests from any "
+        "local process without authentication. The desktop app always sets this "
+        "at spawn time; only omit it for ad-hoc local development."
+    )
+
 logging.basicConfig(
     level=getattr(logging, settings.log_level.upper(), logging.INFO),
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 logger = logging.getLogger("rag")
 
-app = FastAPI(title="Interview Assistant Local RAG Service", version="0.1.0")
+app = FastAPI(title="WhitedotAI Local RAG Service", version="0.1.0")
 
 # Same reasoning as apps/backend: an explicit allowlist, never "*", even though
 # this service only ever binds to localhost.
@@ -48,6 +55,27 @@ app.add_middleware(
     allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["Content-Type"],
 )
+
+
+@app.middleware("http")
+async def require_internal_token(request: Request, call_next):
+    """Rejects any request that doesn't carry the shared secret the desktop
+    app generated for this process, except /health (used for the readiness
+    poll before the token would even be known) and CORS preflight. This is
+    the service's only auth boundary — see Settings.internal_auth_token."""
+    if (
+        settings.internal_auth_token
+        and request.url.path != "/health"
+        and request.method != "OPTIONS"
+    ):
+        header = request.headers.get("authorization", "")
+        scheme, _, token = header.partition(" ")
+        if scheme.lower() != "bearer" or token != settings.internal_auth_token:
+            return JSONResponse(
+                status_code=401,
+                content={"error": {"code": "UNAUTHORIZED", "message": "Missing or invalid internal token"}},
+            )
+    return await call_next(request)
 
 
 @app.exception_handler(RequestValidationError)

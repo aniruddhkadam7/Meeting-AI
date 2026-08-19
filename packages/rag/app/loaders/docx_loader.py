@@ -1,11 +1,20 @@
 from __future__ import annotations
 
 import io
+import zipfile
 
 from docx import Document
 from docx.opc.exceptions import PackageNotFoundError
 
 from .base import DocumentLoader
+
+# DOCX is a zip archive; zipfile will happily decompress an arbitrarily large
+# member with no size ceiling of its own. A malicious file well under the
+# upload size limit can still decompress to gigabytes ("zip bomb"). Reject
+# anything whose *uncompressed* content would exceed this before python-docx
+# ever unpacks it. 500MB is generous for any legitimate document (a real DOCX
+# rarely exceeds a few MB uncompressed) while still blocking bomb-style ratios.
+_MAX_UNCOMPRESSED_BYTES = 500 * 1024 * 1024
 
 
 class DocxLoader(DocumentLoader):
@@ -16,6 +25,14 @@ class DocxLoader(DocumentLoader):
     """
 
     def extract_text(self, data: bytes) -> str:
+        try:
+            with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                total_uncompressed = sum(info.file_size for info in archive.infolist())
+        except zipfile.BadZipFile as exc:
+            raise ValueError(f"could not read DOCX: {exc}") from exc
+        if total_uncompressed > _MAX_UNCOMPRESSED_BYTES:
+            raise ValueError("DOCX contents are too large to process")
+
         try:
             document = Document(io.BytesIO(data))
         except (PackageNotFoundError, Exception) as exc:

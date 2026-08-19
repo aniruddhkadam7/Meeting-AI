@@ -14,9 +14,16 @@ pub struct RagClient {
 impl RagClient {
     pub fn new() -> Self {
         crate::tls_init::ensure_installed();
+        let mut headers = reqwest::header::HeaderMap::new();
+        if let Ok(value) =
+            reqwest::header::HeaderValue::from_str(&format!("Bearer {}", RagServiceHandle::auth_token()))
+        {
+            headers.insert(reqwest::header::AUTHORIZATION, value);
+        }
         Self {
             http: reqwest::Client::builder()
                 .timeout(Duration::from_secs(120)) // document processing can be slow
+                .default_headers(headers)
                 .build()
                 .unwrap_or_default(),
             base_url: RagServiceHandle::base_url(),

@@ -1,8 +1,27 @@
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
+use std::sync::OnceLock;
 use std::time::Duration;
 
 const RAG_PORT: u16 = 8100;
+
+/// Per-launch shared secret required on every RAG service request (except
+/// /health) — see packages/rag/app/main.py's auth middleware. Generated once
+/// per desktop app process and handed to the RAG child via env var at spawn
+/// time, so no other local process can drive this service just by knowing
+/// its (fixed, well-known) port.
+static INTERNAL_TOKEN: OnceLock<String> = OnceLock::new();
+
+fn internal_token() -> &'static str {
+    INTERNAL_TOKEN.get_or_init(|| {
+        use ring::rand::{SecureRandom, SystemRandom};
+        let mut bytes = [0u8; 32];
+        SystemRandom::new()
+            .fill(&mut bytes)
+            .expect("failed to generate RAG internal auth token");
+        bytes.iter().map(|b| format!("{b:02x}")).collect()
+    })
+}
 
 fn rag_package_dir() -> PathBuf {
     // In dev, CARGO_MANIFEST_DIR is apps/desktop/src-tauri; the RAG service
@@ -33,6 +52,13 @@ impl RagServiceHandle {
         format!("http://127.0.0.1:{RAG_PORT}")
     }
 
+    /// The shared secret required on every RAG service request — see
+    /// `internal_token()`. Generated lazily so callers (e.g. `RagClient::new`)
+    /// can fetch it even before `spawn` has run.
+    pub fn auth_token() -> &'static str {
+        internal_token()
+    }
+
     /// Spawns the RAG service as a child process. Returns `Ok(None)` (not an
     /// error) if the service's venv hasn't been set up — the caller can still
     /// run the rest of the app without document upload/RAG features available,
@@ -55,10 +81,19 @@ impl RagServiceHandle {
         let package_dir = rag_package_dir();
 
         let mut child = Command::new(&python)
-            .args(["-m", "uvicorn", "app.main:app", "--port", &RAG_PORT.to_string()])
+            .args([
+                "-m",
+                "uvicorn",
+                "app.main:app",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                &RAG_PORT.to_string(),
+            ])
             .current_dir(&package_dir)
             .env("RAG_EMBED_BATCH_SIZE", embed_config.embed_batch_size.to_string())
             .env("RAG_TORCH_THREADS", embed_config.torch_threads.to_string())
+            .env("RAG_INTERNAL_TOKEN", internal_token())
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())

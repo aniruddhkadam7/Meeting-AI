@@ -51,4 +51,9 @@ keyring = "3"
 # explicitly at process start — see src/tls_init.rs for why this is needed.
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 tokio = { version = "1", features = ["time"] }
+# Already pulled in transitively by rustls's "ring" feature above — declared
+# directly only so its CSPRNG (SystemRandom) can be used to generate the RAG
+# service's per-launch internal auth token (see src/rag/process.rs). Adds no
+# new crate to the dependency tree.
+ring = "0.17"
 

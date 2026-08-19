@@ -212,3 +212,57 @@ def test_push_creates_a_new_row_when_none_exists(monkeypatch):
     assert response.status_code == 200
     assert response.json()["synced"] == 1
     assert len(fake.table("agents").rows) == 1
+
+
+def test_pull_never_returns_another_users_agents(monkeypatch):
+    """Defense-in-depth guard alongside RLS: even though Postgres RLS is what
+    actually enforces per-user isolation against the real database, this
+    confirms the backend's own query never asks for anything but the
+    caller's own user_id — the .eq("user_id", user.id) filter isn't
+    accidentally dropped or short-circuited. Row Level Security is verified
+    separately at the SQL level (supabase/migrations/0001_init.sql); this
+    is what's testable without a live Supabase project."""
+    fake = FakeSupabaseClient()
+    fake.seed_agent(user_id="user-A", client_id="agent-a1", name="User A's Agent", updated_at_ms=1000)
+    fake.seed_agent(user_id="user-B", client_id="agent-b1", name="User B's Agent", updated_at_ms=1000)
+    _patch_client(monkeypatch, fake)
+
+    token_for_user_a = _make_token(user_id="user-A")
+    response = client.get(
+        "/api/v1/agents/sync/pull",
+        headers={"Authorization": f"Bearer {token_for_user_a}"},
+    )
+
+    assert response.status_code == 200
+    agents = response.json()["agents"]
+    assert len(agents) == 1
+    assert agents[0]["client_id"] == "agent-a1"
+    assert all(a["client_id"] != "agent-b1" for a in agents)
+
+
+def test_push_cannot_overwrite_another_users_agent_row(monkeypatch):
+    """Even if two users' agents happened to share a client_id (e.g. two
+    different desktop installs both picking the same locally-generated id
+    — not expected in practice since ids are randomized, but not
+    impossible), a push must never let user B's request touch user A's
+    row. The push handler's queries are always scoped by both user_id and
+    client_id, so this exercises that the user_id half of the filter is
+    real, not just present in the code."""
+    fake = FakeSupabaseClient()
+    fake.seed_agent(user_id="user-A", client_id="shared-id", name="User A's Agent", updated_at_ms=1000)
+    _patch_client(monkeypatch, fake)
+
+    token_for_user_b = _make_token(user_id="user-B")
+    response = client.post(
+        "/api/v1/agents/sync/push",
+        json={"agents": [{"client_id": "shared-id", "name": "User B's Overwrite Attempt", "created_at_ms": 2000, "updated_at_ms": 2000}]},
+        headers={"Authorization": f"Bearer {token_for_user_b}"},
+    )
+
+    assert response.status_code == 200
+    rows = fake.table("agents").rows
+    user_a_row = next(r for r in rows if r["user_id"] == "user-A")
+    assert user_a_row["name"] == "User A's Agent"
+    user_b_row = next(r for r in rows if r["user_id"] == "user-B")
+    assert user_b_row["name"] == "User B's Overwrite Attempt"
+    assert len(rows) == 2

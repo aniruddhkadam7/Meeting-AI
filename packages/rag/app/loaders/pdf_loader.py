@@ -7,6 +7,11 @@ from pypdf.errors import PdfReadError
 
 from .base import DocumentLoader
 
+# Bounds pathological page counts (e.g. a small file crafted with thousands of
+# near-empty pages) from turning a single upload into an unbounded amount of
+# synchronous extraction/embedding work on this single-worker service.
+_MAX_PAGES = 2000
+
 
 class PdfLoader(DocumentLoader):
     """Extracts text page-by-page using pypdf (a maintained, pure-Python PDF
@@ -25,6 +30,9 @@ class PdfLoader(DocumentLoader):
                 reader.decrypt("")
             except Exception as exc:
                 raise ValueError(f"PDF is encrypted and could not be opened: {exc}") from exc
+
+        if len(reader.pages) > _MAX_PAGES:
+            raise ValueError(f"PDF has too many pages (max {_MAX_PAGES})")
 
         pages_text = []
         for page in reader.pages:

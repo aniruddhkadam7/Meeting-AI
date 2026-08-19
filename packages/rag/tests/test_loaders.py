@@ -1,4 +1,5 @@
 import io
+import zipfile
 
 import pytest
 from docx import Document as DocxDocument
@@ -6,6 +7,8 @@ from pypdf import PdfWriter
 from pypdf.generic import ContentStream, DictionaryObject, NameObject
 
 from app.loaders import get_loader
+from app.loaders.docx_loader import DocxLoader
+from app.loaders.pdf_loader import PdfLoader
 from app.loaders.text_loader import MarkdownLoader, TxtLoader
 
 
@@ -126,3 +129,39 @@ def test_pdf_loader_rejects_blank_page_pdf_with_no_text():
 def test_get_loader_raises_for_unknown_extension():
     with pytest.raises(ValueError):
         get_loader(".xyz")
+
+
+def test_docx_loader_rejects_zip_bomb(monkeypatch):
+    """A DOCX crafted to decompress far past the sane-document ceiling must
+    be rejected before python-docx ever unpacks it, not after memory has
+    already been exhausted. Security regression for the zip-bomb finding."""
+    import app.loaders.docx_loader as docx_loader_module
+
+    monkeypatch.setattr(docx_loader_module, "_MAX_UNCOMPRESSED_BYTES", 100)
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as archive:
+        # Highly compressible content well past the (monkeypatched) 100-byte
+        # uncompressed ceiling, achievable with a tiny compressed payload.
+        archive.writestr("word/document.xml", b"A" * 10_000)
+
+    with pytest.raises(ValueError, match="too large"):
+        DocxLoader().extract_text(buf.getvalue())
+
+
+def test_pdf_loader_rejects_too_many_pages(monkeypatch):
+    """A PDF within the byte-size limit but with a pathological page count
+    must be rejected rather than forcing unbounded synchronous extraction
+    work. Security regression for the page-count-DoS finding."""
+    import app.loaders.pdf_loader as pdf_loader_module
+
+    monkeypatch.setattr(pdf_loader_module, "_MAX_PAGES", 2)
+
+    writer = PdfWriter()
+    for _ in range(3):
+        writer.add_blank_page(width=100, height=100)
+    buf = io.BytesIO()
+    writer.write(buf)
+
+    with pytest.raises(ValueError, match="too many pages"):
+        PdfLoader().extract_text(buf.getvalue())

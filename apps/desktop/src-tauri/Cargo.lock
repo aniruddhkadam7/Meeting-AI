@@ -827,6 +827,7 @@ dependencies = [
  "keyring",
  "log",
  "reqwest",
+ "ring",
  "rubato",
  "rustls",
  "serde",

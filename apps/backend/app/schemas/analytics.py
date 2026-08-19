@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 MAX_EVENT_NAME_LENGTH = 100
 MAX_PROPERTIES_KEYS = 20
@@ -25,6 +25,18 @@ class AnalyticsEvent(BaseModel):
     properties: Dict[str, Any] = Field(default_factory=dict)
     app_version: Optional[str] = Field(default=None, max_length=50)
     client_timestamp: Optional[str] = None
+
+    @field_validator("properties")
+    @classmethod
+    def _validate_properties_size(cls, value: Dict[str, Any]) -> Dict[str, Any]:
+        if len(value) > MAX_PROPERTIES_KEYS:
+            raise ValueError(f"properties may have at most {MAX_PROPERTIES_KEYS} keys")
+        for key, val in value.items():
+            if isinstance(val, str) and len(val) > MAX_PROPERTY_VALUE_LENGTH:
+                raise ValueError(
+                    f"properties.{key} exceeds the {MAX_PROPERTY_VALUE_LENGTH}-character limit"
+                )
+        return value
 
 
 class AnalyticsEventBatch(BaseModel):

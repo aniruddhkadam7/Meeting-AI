@@ -15,8 +15,8 @@ from pathlib import Path
 def _default_data_dir() -> Path:
     appdata = os.environ.get("APPDATA")
     if appdata:
-        return Path(appdata) / "InterviewAssistant" / "knowledge"
-    return Path.home() / ".interview-assistant" / "knowledge"
+        return Path(appdata) / "WhitedotAI" / "knowledge"
+    return Path.home() / ".whitedotai" / "knowledge"
 
 
 class Settings:
@@ -45,6 +45,14 @@ class Settings:
     torch_threads: int = int(os.getenv("RAG_TORCH_THREADS", "4"))
 
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
+
+    # Shared secret the desktop app generates per-launch and passes via env var
+    # (see apps/desktop/src-tauri/src/rag/process.rs) — required as a bearer
+    # header on every route except /health so an unrelated local process on the
+    # same machine can't drive this service. Empty means "no auth" and is only
+    # tolerated for ad-hoc local dev (e.g. running `uvicorn` by hand); the
+    # desktop app always sets this when it spawns the service.
+    internal_auth_token: str = os.getenv("RAG_INTERNAL_TOKEN", "")
 
     @property
     def max_document_size_bytes(self) -> int:

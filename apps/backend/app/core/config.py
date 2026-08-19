@@ -1,6 +1,6 @@
 """Backend configuration, sourced from environment variables / .env.
 
-REDLY Cloud (hybrid architecture): this service now also verifies Supabase
+WhitedotAI Cloud (hybrid architecture): this service now also verifies Supabase
 Auth JWTs and writes usage/cost tracking to Supabase Postgres via the
 service-role key. Both are optional at the config level — an unset
 `SUPABASE_*` block means auth-required routes reject with a clear 401 (server
@@ -27,6 +27,16 @@ load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
 class Settings:
     host: str = os.getenv("BACKEND_HOST", "127.0.0.1")
     port: int = int(os.getenv("BACKEND_PORT", "8000"))
+
+    # "production" disables the interactive /docs, /redoc, and /openapi.json
+    # routes (see app/main.py) — those expose the full route/schema surface to
+    # anyone who can reach the server and aren't needed once the API is fixed.
+    # Any other value (including unset, the local-dev default) leaves them on.
+    environment: str = os.getenv("ENVIRONMENT", "development")
+
+    @property
+    def is_production(self) -> bool:
+        return self.environment.lower() == "production"
 
     # Origins the desktop app's WebView may call from during development. Tauri's
     # dev server runs on localhost:1420; the packaged app's WebView uses a
@@ -80,7 +90,7 @@ class Settings:
 
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
 
-    # --- REDLY Cloud: Supabase Auth + Postgres ---------------------------
+    # --- WhitedotAI Cloud: Supabase Auth + Postgres ---------------------------
     # Project URL and anon key are the same values the desktop app is given
     # (safe to be non-secret; RLS is what actually protects data). The JWT
     # secret and service-role key are backend-only and must never be sent to
