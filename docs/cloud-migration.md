@@ -1,7 +1,7 @@
-# REDLY Hybrid Cloud Migration
+# WhitedotAI Hybrid Cloud Migration
 
 Tracks the move from a fully local, single-user desktop app to the hybrid
-architecture: Tauri desktop (local STT/audio/RAG, unchanged) + REDLY Cloud
+architecture: Tauri desktop (local STT/audio/RAG, unchanged) + WhitedotAI Cloud
 (Supabase Auth/Postgres + FastAPI, for accounts, agent sync, and analytics).
 
 ## Before this migration
@@ -22,7 +22,7 @@ Everything ran locally with no cloud component:
 
 ## What changed
 
-`apps/backend` is now **REDLY Cloud**: the same FastAPI app, unchanged in
+`apps/backend` is now **WhitedotAI Cloud**: the same FastAPI app, unchanged in
 its existing routes/behavior, with three additions:
 
 1. **Auth** (`app/core/auth.py`) — verifies Supabase-issued JWTs. Every
@@ -40,11 +40,11 @@ its existing routes/behavior, with three additions:
 The desktop app gained:
 - `src-tauri/src/auth/` — signs in directly against Supabase Auth (GoTrue),
   stores the session in Windows Credential Manager via the `keyring` crate.
-  REDLY Cloud's FastAPI never sees a password.
+  WhitedotAI Cloud's FastAPI never sees a password.
 - `src-tauri/src/cloud_sync/` — pushes/pulls agents, merged into the local
   `AgentStore` last-write-wins by `updated_at_ms`. Local storage remains the
   source of truth for offline use; sync is best-effort and additive.
-- `src-tauri/src/analytics/` — an in-memory event queue flushed to REDLY
+- `src-tauri/src/analytics/` — an in-memory event queue flushed to WhitedotAI
   Cloud every 60s when signed in. No-ops (queues, doesn't fail) when signed
   out or offline.
 - `src-tauri/src/updater.rs` + `tauri-plugin-updater` — checks a configured
@@ -83,7 +83,7 @@ The desktop app gained:
    you set one) before running a release build, or `npm run tauri build`
    will produce unsigned (non-updatable) artifacts.
 5. **Update endpoint**: `tauri.conf.json`'s `plugins.updater.endpoints`
-   currently points at `https://releases.redly.app/updates/...` as a
+   currently points at `https://releases.whitedotai.app/updates/...` as a
    placeholder — replace with wherever release JSON manifests + installers
    actually get hosted (a static file host / S3 bucket / GitHub Releases all
    work with Tauri's updater; pick one and update this URL before shipping

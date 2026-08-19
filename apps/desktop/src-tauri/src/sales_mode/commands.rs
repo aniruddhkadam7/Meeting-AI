@@ -91,7 +91,7 @@ where
 #[tauri::command]
 pub async fn show_sales_overlay(app: AppHandle) -> Result<overlay_window::OverlayCaptureStatus, String> {
     run_on_main(&app, |app| {
-        overlay_window::show_overlay_window(app, SALES_OVERLAY_LABEL, "REDLY Sales — Overlay")
+        overlay_window::show_overlay_window(app, SALES_OVERLAY_LABEL, "WhitedotAI Sales — Overlay")
     })
     .await
 }
@@ -104,7 +104,7 @@ pub async fn hide_sales_overlay(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub async fn toggle_sales_overlay(app: AppHandle) -> Result<overlay_window::OverlayCaptureStatus, String> {
     run_on_main(&app, |app| {
-        overlay_window::toggle_overlay_window(app, SALES_OVERLAY_LABEL, "REDLY Sales — Overlay")
+        overlay_window::toggle_overlay_window(app, SALES_OVERLAY_LABEL, "WhitedotAI Sales — Overlay")
     })
     .await
 }

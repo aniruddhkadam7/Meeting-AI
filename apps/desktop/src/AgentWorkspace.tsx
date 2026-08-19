@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import redlyLogo from "./assets/redly-logo.png";
+import whitedotaiLogo from "./assets/whitedotai-logo.png";
 import { Agent, AgentPersonalization } from "./types";
 import { Button } from "./ui";
 import { PersonalizationEditor } from "./AgentCreate";
@@ -53,9 +53,9 @@ export function AgentWorkspace({ agent, onExit, onAgentUpdated, initialView = "K
         <button className="workspace-back-btn" onClick={onExit} title="Back to Agents">
           ← Back
         </button>
-        <button className="workspace-brand" onClick={onExit} title="Back to REDLY home">
-          <img className="workspace-logo" src={redlyLogo} alt="REDLY" />
-          <span className="workspace-wordmark">REDLY</span>
+        <button className="workspace-brand" onClick={onExit} title="Back to WhitedotAI home">
+          <img className="workspace-logo" src={whitedotaiLogo} alt="WhitedotAI" />
+          <span className="workspace-wordmark">WhitedotAI</span>
         </button>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
           {error && <span className="error-text">{error}</span>}

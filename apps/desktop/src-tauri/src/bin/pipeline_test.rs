@@ -51,7 +51,10 @@ fn main() {
         }
     };
 
-    let sidecar = match SttSidecar::spawn(desktop_lib::audio::AudioSource::SystemAudio, stt_tx) {
+    // `None`: this headless binary has no `PerformanceManager`/`AppHandle` —
+    // preserves the pre-existing STT_NUM_THREADS env-var pass-through
+    // behavior unchanged, same as before this parameter existed.
+    let sidecar = match SttSidecar::spawn(desktop_lib::audio::AudioSource::SystemAudio, stt_tx, None) {
         Ok(sidecar) => sidecar,
         Err(err) => {
             eprintln!("sidecar failed: {err}");

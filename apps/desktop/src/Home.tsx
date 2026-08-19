@@ -43,10 +43,10 @@ export function Home({
     <div className="home-shell">
       <section className="home-hero">
         <div className="home-hero-text">
-          <span className="home-eyebrow">REDLY</span>
+          <span className="home-eyebrow">WhitedotAI</span>
           <h1 className="home-title">Work smarter in every conversation.</h1>
           <p className="home-subtitle">
-            REDLY gives you real-time guidance and clarity during the conversations that matter —
+            WhitedotAI gives you real-time guidance and clarity during the conversations that matter —
             starting with your next interview.
           </p>
         </div>

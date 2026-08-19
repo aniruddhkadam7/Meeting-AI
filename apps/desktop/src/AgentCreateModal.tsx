@@ -24,7 +24,7 @@ interface Props {
 /// The entire Custom Agents creation surface, as one modal — no wizard, no
 /// nested screens. Choose Predefined Role (a couple of optional, plain-
 /// language questions) or Custom Agent (name + a few optional fields).
-/// Nothing here ever asks the user to write or see a system prompt; REDLY
+/// Nothing here ever asks the user to write or see a system prompt; WhitedotAI
 /// composes that internally (apps/backend/app/services/agent_prompt_builder.py).
 export function AgentCreateModal({ onCreated, onClose }: Props) {
   const [mode, setMode] = useState<CreationMode>("PREDEFINED");

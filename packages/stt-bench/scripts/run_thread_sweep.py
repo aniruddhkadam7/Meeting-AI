@@ -1,5 +1,5 @@
 """Sweeps STT_NUM_THREADS for the production nemo-80ms engine to find whether
-REDLY's hardcoded DEFAULT_NUM_THREADS=4 (packages/stt/streaming_asr_sidecar/
+WhitedotAI's hardcoded DEFAULT_NUM_THREADS=4 (packages/stt/streaming_asr_sidecar/
 sidecar.py) is actually the right value on this machine, and whether a higher
 value (the adaptive-performance-engine's provisional HIGH_PERFORMANCE tier
 proposes 6) is justified by real latency numbers rather than assumed.
@@ -14,7 +14,7 @@ thread count's run.
     py -3 packages/stt-bench/scripts/run_thread_sweep.py --corpus corpus/synthetic
 
 This does not touch the network and does not modify any file the production
-app reads — it points STT_MODEL_DIR at the same on-disk model REDLY ships
+app reads — it points STT_MODEL_DIR at the same on-disk model WhitedotAI ships
 (models/stt/nemo-fastconformer-80ms-int8, verified byte-identical to the
 stt-bench copy at models/stt-bench/nemo-fastconformer-80ms) but never writes
 to apps/desktop or packages/stt.

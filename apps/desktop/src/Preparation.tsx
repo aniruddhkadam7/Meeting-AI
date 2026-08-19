@@ -197,7 +197,7 @@ export function Preparation({ role, onRoleChange, company, onCompanyChange }: Pr
           </div>
         )}
         {documents.length === 0 ? (
-          <EmptyState icon="🗂️" title="No documents uploaded yet" description="Upload a resume or job description above so REDLY can tailor its help to you." />
+          <EmptyState icon="🗂️" title="No documents uploaded yet" description="Upload a resume or job description above so WhitedotAI can tailor its help to you." />
         ) : (
           <ul className="document-list">
             {documents.map((doc) => (

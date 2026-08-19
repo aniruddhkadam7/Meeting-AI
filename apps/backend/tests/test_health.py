@@ -10,4 +10,4 @@ def test_health_returns_200_and_expected_shape():
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ok"
-    assert body["service"] == "interview-assistant-backend"
+    assert body["service"] == "whitedotai-backend"

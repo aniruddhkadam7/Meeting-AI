@@ -1,4 +1,4 @@
-"""Benchmarks REDLY's local RAG pipeline (embedding + sqlite-vec search)
+"""Benchmarks WhitedotAI's local RAG pipeline (embedding + sqlite-vec search)
 against different torch-thread-count / encode-batch-size configurations, to
 correct or confirm the adaptive-performance-engine's provisional
 RAG_EMBED_BATCH_SIZE / RAG_TORCH_THREADS tier values
@@ -46,14 +46,14 @@ DEFAULT_THREAD_COUNTS = [1, 2, 4, 8]
 #: to build a corpus large enough that indexing/search latency is measurable
 #: rather than dominated by Python call overhead.
 _SAMPLE_CHUNK = (
-    "REDLY is a local-first meeting and interview assistant. It captures "
+    "WhitedotAI is a local-first meeting and interview assistant. It captures "
     "system audio and microphone input via WASAPI, transcribes it locally "
     "using a streaming speech recognition model, and retrieves relevant "
     "context from the user's uploaded documents to help answer questions "
     "during a live interview, sales call, or consulting engagement. All "
     "speech-to-text and retrieval computation happens on the local machine; "
     "only the final language-model call for generating an answer goes to "
-    "REDLY's cloud backend, and it never receives raw audio. The knowledge "
+    "WhitedotAI's cloud backend, and it never receives raw audio. The knowledge "
     "base is stored in a local SQLite database with a vector search "
     "extension, so document upload, chunking, embedding, and search all "
     "happen without any network access after the embedding model itself "
@@ -61,7 +61,7 @@ _SAMPLE_CHUNK = (
 ) * 3
 
 _SAMPLE_QUERIES = [
-    "How does REDLY capture system audio?",
+    "How does WhitedotAI capture system audio?",
     "What happens to my documents when I upload them?",
     "Is any of my audio sent to the cloud?",
     "How does the retrieval system find relevant context?",

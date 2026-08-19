@@ -44,7 +44,7 @@ RAG_BASE = "http://127.0.0.1:8100"
 # chunking produces plenty of chunks to embed (~650-token chunks, so this
 # needs to be sized well past one chunk).
 _DOC_PARAGRAPH = (
-    "REDLY is a local-first meeting and interview assistant. It captures "
+    "WhitedotAI is a local-first meeting and interview assistant. It captures "
     "system audio and transcribes it locally using a streaming speech "
     "recognition model, then retrieves relevant context from uploaded "
     "documents to help answer questions during a live interview. "

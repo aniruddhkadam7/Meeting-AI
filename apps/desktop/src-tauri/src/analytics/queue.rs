@@ -31,7 +31,7 @@ pub fn track(queue: &AnalyticsQueue, event_name: &str, properties: serde_json::V
     });
 }
 
-/// Drains the queue and sends it to REDLY Cloud, if the user is signed in.
+/// Drains the queue and sends it to WhitedotAI Cloud, if the user is signed in.
 /// If not signed in, or the send fails, the events are put back at the
 /// front of the queue for the next flush attempt rather than dropped —
 /// bounded by `MAX_QUEUED_EVENTS` above so a long offline stretch still

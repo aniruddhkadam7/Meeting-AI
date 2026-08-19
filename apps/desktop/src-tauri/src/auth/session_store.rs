@@ -1,11 +1,11 @@
 //! Persists the Supabase session (access + refresh token) in Windows
 //! Credential Manager via the `keyring` crate, so the user stays signed in
-//! across app restarts without REDLY ever writing a token to a plaintext
+//! across app restarts without WhitedotAI ever writing a token to a plaintext
 //! file on disk.
 
 use serde::{Deserialize, Serialize};
 
-const SERVICE_NAME: &str = "REDLY";
+const SERVICE_NAME: &str = "WhitedotAI";
 const ENTRY_NAME: &str = "supabase-session";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,4 +1,4 @@
--- REDLY Cloud — initial schema
+-- WhitedotAI Cloud — initial schema
 --
 -- Design notes:
 --   * auth.users (Supabase Auth) is the identity source of truth. Every
@@ -118,7 +118,7 @@ create policy "subscriptions_select_own" on public.subscriptions
 -- agents — Custom Agents + predefined-role agents, synced from the desktop
 -- local store. `client_id` is the desktop's own locally-generated id
 -- (e.g. "agent-<hex>-<hex>") so sync can match local <-> cloud rows without
--- REDLY inventing a second id scheme on the desktop side.
+-- WhitedotAI inventing a second id scheme on the desktop side.
 -- ---------------------------------------------------------------------------
 create table if not exists public.agents (
     id uuid primary key default gen_random_uuid(),

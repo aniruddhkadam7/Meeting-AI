@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import redlyLogo from "./assets/redly-logo.png";
+import whitedotaiLogo from "./assets/whitedotai-logo.png";
 import { InterviewHistory } from "./InterviewHistory";
 import { InterviewSetup } from "./InterviewSetup";
 
@@ -32,12 +32,12 @@ export function InterviewWorkspace({ onExit }: Props) {
   return (
     <div className="workspace-shell">
       <header className="workspace-header">
-        <button className="workspace-back-btn" onClick={onExit} title="Back to REDLY home">
+        <button className="workspace-back-btn" onClick={onExit} title="Back to WhitedotAI home">
           ← Back
         </button>
-        <button className="workspace-brand" onClick={onExit} title="Back to REDLY home">
-          <img className="workspace-logo" src={redlyLogo} alt="REDLY" />
-          <span className="workspace-wordmark">REDLY</span>
+        <button className="workspace-brand" onClick={onExit} title="Back to WhitedotAI home">
+          <img className="workspace-logo" src={whitedotaiLogo} alt="WhitedotAI" />
+          <span className="workspace-wordmark">WhitedotAI</span>
         </button>
       </header>
 

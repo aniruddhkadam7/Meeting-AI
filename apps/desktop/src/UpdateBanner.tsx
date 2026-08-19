@@ -9,7 +9,7 @@ interface UpdateInfo {
 
 /// Checks for an update once on launch and shows a small dismissible banner
 /// if one is available. Installing is always an explicit user action (click
-/// "Update now") — REDLY never silently restarts itself mid-session.
+/// "Update now") — WhitedotAI never silently restarts itself mid-session.
 export function UpdateBanner() {
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const [installing, setInstalling] = useState(false);
@@ -41,7 +41,7 @@ export function UpdateBanner() {
   return (
     <div className="update-banner">
       <span>
-        REDLY {update.version} is available.
+        WhitedotAI {update.version} is available.
         {error && <span className="update-banner-error"> {error}</span>}
       </span>
       <div className="update-banner-actions">

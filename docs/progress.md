@@ -455,7 +455,7 @@ payload with only required fields → 200; and a regression guard asserting the
 mock response never reports non-zero scores).
 
 **Backend live-server verification** (`uvicorn app.main:app --port 8000`, hit with
-`curl`): `GET /health` → `200 {"status":"ok","service":"interview-assistant-backend"}`;
+`curl`): `GET /health` → `200 {"status":"ok","service":"whitedotai-backend"}`;
 valid `POST /api/v1/interviews/analyze` → `200` with the exact mock shape;
 missing-transcript and invalid-source requests → `422` with the
 `{"error":{"code":"VALIDATION_ERROR","message":"..."}}` shape; a CORS preflight
@@ -754,7 +754,7 @@ against each question, not inferred from scores alone. Retrieval latency:
   by there being no code path anywhere that passes RAG-service data into the
   `backend::client` module.
 - All knowledge-base state (raw files, extracted text, the SQLite+sqlite-vec
-  database) lives under `%APPDATA%\InterviewAssistant\knowledge\` — outside
+  database) lives under `%APPDATA%\WhitedotAI\knowledge\` — outside
   the repository, confirmed via `packages/rag/app/core/config.py`'s
   `_default_data_dir()` and the `.gitignore` entries added alongside this work.
 

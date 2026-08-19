@@ -2,7 +2,7 @@
 
 ## Overview
 
-Interview Assistant is a Windows desktop application that captures system audio during
+WhitedotAI is a Windows desktop application that captures system audio during
 an interview, transcribes it locally with a streaming neural ASR model running on the
 CPU (no cloud STT), and — only when the user explicitly requests it — sends the
 finalized transcript to a FastAPI backend for RAG-augmented LLM analysis.
@@ -230,7 +230,7 @@ happens when recording stops.
   `services/{interview_service,analysis_service}.py` (business logic) →
   `schemas/{interview,analysis,error}.py` (Pydantic v2 request/response contracts)
   → `core/config.py` (env-driven settings).
-- `GET /health` → `{"status": "ok", "service": "interview-assistant-backend"}`.
+- `GET /health` → `{"status": "ok", "service": "whitedotai-backend"}`.
 - `POST /api/v1/interviews/analyze` — versioned from the start (`/api/v1/`) so the
   contract can evolve without breaking older desktop builds. Accepts
   `{ session_id, role?, company?, job_description?, candidate_context?, transcript:
@@ -303,7 +303,7 @@ Embedding (sentence-transformers/all-MiniLM-L6-v2, local, CPU, no LLM)
       |
       v
 Vector store (SQLite + sqlite-vec, one .db file under
-              %APPDATA%\InterviewAssistant\knowledge\)
+              %APPDATA%\WhitedotAI\knowledge\)
       |
       v
 Retriever.search(query, top_k) -> ranked chunks
@@ -340,7 +340,7 @@ architecture is decided.
   preference, ~650-token chunks with ~80-token overlap
   (`packages/rag/app/chunking.py`).
 - **Document/knowledge-base state** lives entirely under
-  `%APPDATA%\InterviewAssistant\knowledge\` — raw files, extracted text, and
+  `%APPDATA%\WhitedotAI\knowledge\` — raw files, extracted text, and
   the vector store — never inside the repository, never uploaded anywhere.
 - Retrieval quality (not just plumbing) was manually verified with the real
   embedding model against realistic resume/project documents and the spec's

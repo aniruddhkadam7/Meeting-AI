@@ -8,7 +8,7 @@ assembles the system prompt itself from data (`agent_roles.py`) plus the
 user's own free-text description/custom instructions, rather than a
 hardcoded prompt file per role.
 
-This is the mechanism behind "REDLY should automatically convert simple
+This is the mechanism behind "WhitedotAI should automatically convert simple
 inputs into internal instructions" — the composed prompt below is never
 shown to the user and never needs to be written by them.
 """

@@ -151,7 +151,7 @@ headroom is exactly what Phase B spends usefully (see below).
 - `apps/desktop/src-tauri/src/rag/client.rs` — `RagClient::set_throttle()`.
 - `apps/desktop/src-tauri/src/hardware/stt_rag_coordination.rs` (new) —
   reference-counted session tracking (`RefCount`, pure/unit-tested) so the
-  throttle stays active across REDLY's two independently-lifecycled STT
+  throttle stays active across WhitedotAI's two independently-lifecycled STT
   sessions (main recording + Notes dictation) and only clears once the
   *last* active session ends. On the first session starting, spawns an
   async task that activates the throttle and refreshes it every 3s (well
@@ -219,7 +219,7 @@ is **not measured** — see "what remains unvalidated" below.
 ### Verdict: **keep**
 
 The mechanism is correct, safe (TTL-based self-healing against crashes,
-reference-counted for REDLY's two concurrent STT session types, never
+reference-counted for WhitedotAI's two concurrent STT session types, never
 restarts the RAG sidecar, never touches `/search`/retrieval), and only
 activates on the hardware tiers where it's intended to help. It carries
 negligible cost when inactive (one no-op tier check per STT session
@@ -504,7 +504,7 @@ below is clearly a simulation, not a hardware measurement:
 ## Recommended final STT configuration
 
 Based on the evidence in this document, the following is recommended as
-REDLY's shipped default configuration (all already the shipped defaults —
+WhitedotAI's shipped default configuration (all already the shipped defaults —
 no further change needed as a result of this phase):
 
 - `STT_VAD_GATE_ENABLED=true` (Phase A) — CPU reduction with zero measured

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::backend::backend_url;
 
-// Plain snake_case on the wire (no rename) — this struct talks to REDLY
+// Plain snake_case on the wire (no rename) — this struct talks to WhitedotAI
 // Cloud's FastAPI backend (app/schemas/agent_sync.py::SyncedAgent), which
 // uses snake_case fields with no camelCase alias config, matching every
 // other backend wire type in this codebase (see backend::types::*). This is
@@ -68,7 +68,7 @@ impl CloudSyncClient {
             .json(&PushRequest { agents })
             .send()
             .await
-            .map_err(|e| format!("failed to reach REDLY Cloud: {e}"))?;
+            .map_err(|e| format!("failed to reach WhitedotAI Cloud: {e}"))?;
 
         if response.status().is_success() {
             Ok(())
@@ -85,7 +85,7 @@ impl CloudSyncClient {
             .bearer_auth(token)
             .send()
             .await
-            .map_err(|e| format!("failed to reach REDLY Cloud: {e}"))?;
+            .map_err(|e| format!("failed to reach WhitedotAI Cloud: {e}"))?;
 
         if !response.status().is_success() {
             return Err(format!("agent pull failed ({})", response.status()));
@@ -95,7 +95,7 @@ impl CloudSyncClient {
             .json::<PullResponse>()
             .await
             .map(|r| r.agents)
-            .map_err(|e| format!("unexpected response from REDLY Cloud: {e}"))
+            .map_err(|e| format!("unexpected response from WhitedotAI Cloud: {e}"))
     }
 }
 

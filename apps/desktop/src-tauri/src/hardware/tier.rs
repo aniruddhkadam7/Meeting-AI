@@ -1,7 +1,7 @@
 //! Hardware capability scoring: turns a `HardwareProfile` into one of four
 //! tiers using a transparent, additive point system (not a black-box
 //! formula) so it stays debuggable. Weighted toward CPU cores and RAM, since
-//! those are what the one real measurement REDLY has (`docs/stt-benchmark.md`,
+//! those are what the one real measurement WhitedotAI has (`docs/stt-benchmark.md`,
 //! a 10-core/16-thread/15.6GB/RTX3050 machine) shows STT/RAG are actually
 //! bound by — GPU and storage are minor tiebreaker/display signals only,
 //! since GPU execution isn't wired for STT/RAG in this pass and storage type

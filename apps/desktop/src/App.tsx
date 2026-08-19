@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import "./App.css";
-import redlyLogo from "./assets/redly-logo.png";
+import whitedotaiLogo from "./assets/whitedotai-logo.png";
 import { Home } from "./Home";
 import { InterviewWorkspace } from "./InterviewWorkspace";
 import { SalesWorkspace } from "./SalesWorkspace";
@@ -8,6 +8,7 @@ import { ConsultingWorkspace } from "./ConsultingWorkspace";
 import { NotesWorkspace } from "./NotesWorkspace";
 import { AgentsView } from "./AgentsView";
 import { Account } from "./Account";
+import { PerformancePanel } from "./PerformancePanel";
 import { UpdateBanner } from "./UpdateBanner";
 import { Button } from "./ui";
 
@@ -17,6 +18,7 @@ function App() {
   const [view, setView] = useState<View>("HOME");
   const [agentsInitialSubview, setAgentsInitialSubview] = useState<"LIST" | "CREATE">("LIST");
   const [showAccount, setShowAccount] = useState(false);
+  const [showPerformance, setShowPerformance] = useState(false);
 
   const goHome = useCallback(() => {
     setView("HOME");
@@ -71,17 +73,21 @@ function App() {
               ←
             </Button>
           )}
-          <img className="header-logo" src={redlyLogo} alt="REDLY" />
+          <img className="header-logo" src={whitedotaiLogo} alt="WhitedotAI" />
           <div className="header-titles">
-            <span className="header-product">REDLY</span>
+            <span className="header-product">WhitedotAI</span>
           </div>
         </div>
+        <Button variant="ghost" size="sm" onClick={() => setShowPerformance(true)}>
+          Performance
+        </Button>
         <Button variant="ghost" size="sm" onClick={() => setShowAccount(true)}>
           Account
         </Button>
       </header>
 
       {showAccount && <Account onClose={() => setShowAccount(false)} />}
+      {showPerformance && <PerformancePanel onClose={() => setShowPerformance(false)} />}
       <UpdateBanner />
 
       <Home

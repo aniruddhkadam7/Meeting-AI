@@ -34,7 +34,7 @@ pub async fn check_for_update(app: AppHandle) -> Result<Option<UpdateInfo>, Stri
 }
 
 /// Downloads and installs the pending update, then relaunches the app. Only
-/// ever called after the user explicitly confirms in the UI — REDLY does
+/// ever called after the user explicitly confirms in the UI — WhitedotAI does
 /// not silently self-update mid-session without the user's awareness, even
 /// though the check itself runs automatically on launch.
 #[tauri::command]

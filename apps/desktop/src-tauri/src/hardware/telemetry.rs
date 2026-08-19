@@ -17,7 +17,7 @@
 //! - **No new persistence.** Everything here goes through the existing
 //!   `log` crate (the same sink STT/RAG/backend code already logs through)
 //!   — no new file, no new database table, no new telemetry queue. This is
-//!   strictly for a developer/support person reading REDLY's existing log
+//!   strictly for a developer/support person reading WhitedotAI's existing log
 //!   output, not a new data-collection feature.
 //! - **Lightweight.** One `log::info!` call per pipeline stage boundary,
 //!   gated behind the existing `log`/`env_logger` setup (silent at the

@@ -1,4 +1,4 @@
-//! Point-in-time snapshot of the machine REDLY is running on. Detected fresh
+//! Point-in-time snapshot of the machine WhitedotAI is running on. Detected fresh
 //! at every app launch (see `manager::PerformanceManager::detect_and_load`)
 //! rather than cached across launches, since hardware/available-RAM can
 //! change between runs (e.g. a laptop plugged into a dock, a VM resize).

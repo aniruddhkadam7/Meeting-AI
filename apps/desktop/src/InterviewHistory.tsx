@@ -108,7 +108,7 @@ export function InterviewHistory({ refreshKey }: Props) {
                   <p className="history-turn-text">{turn.question}</p>
                 </div>
                 <div className="history-turn-a-row">
-                  <span className="history-turn-tag accent">REDLY</span>
+                  <span className="history-turn-tag accent">WhitedotAI</span>
                   <p className="history-turn-text">{turn.answer}</p>
                 </div>
               </div>

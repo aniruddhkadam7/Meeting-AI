@@ -18,17 +18,31 @@ impl From<&Session> for SessionInfo {
     }
 }
 
+/// Discriminated result for sign-up so the frontend can tell "you're signed
+/// in" apart from "check your email" without parsing an error string —
+/// both are successful outcomes of sign-up, not failures.
+#[derive(Debug, serde::Serialize)]
+#[serde(tag = "status", rename_all = "camelCase")]
+pub enum SignUpResult {
+    SignedIn { session: SessionInfo },
+    ConfirmationRequired,
+}
+
 #[tauri::command]
 pub fn auth_cloud_configured() -> bool {
     is_configured()
 }
 
 #[tauri::command]
-pub async fn auth_sign_up(email: String, password: String) -> Result<SessionInfo, String> {
-    let session = SupabaseAuthClient::new().sign_up(&email, &password).await?;
-    let info = SessionInfo::from(&session);
-    session_store::store_session(&session)?;
-    Ok(info)
+pub async fn auth_sign_up(email: String, password: String) -> Result<SignUpResult, String> {
+    match SupabaseAuthClient::new().sign_up(&email, &password).await? {
+        Some(session) => {
+            let info = SessionInfo::from(&session);
+            session_store::store_session(&session)?;
+            Ok(SignUpResult::SignedIn { session: info })
+        }
+        None => Ok(SignUpResult::ConfirmationRequired),
+    }
 }
 
 #[tauri::command]

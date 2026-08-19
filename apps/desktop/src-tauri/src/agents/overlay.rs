@@ -40,7 +40,7 @@ pub async fn show_agent_overlay(
     agent_name: String,
 ) -> Result<overlay_window::OverlayCaptureStatus, String> {
     let label = overlay_label(&agent_id);
-    let title = format!("REDLY — {agent_name}");
+    let title = format!("WhitedotAI — {agent_name}");
     run_on_main(&app, move |app| overlay_window::show_overlay_window(app, &label, &title)).await
 }
 
@@ -57,7 +57,7 @@ pub async fn toggle_agent_overlay(
     agent_name: String,
 ) -> Result<overlay_window::OverlayCaptureStatus, String> {
     let label = overlay_label(&agent_id);
-    let title = format!("REDLY — {agent_name}");
+    let title = format!("WhitedotAI — {agent_name}");
     run_on_main(&app, move |app| overlay_window::toggle_overlay_window(app, &label, &title)).await
 }
 

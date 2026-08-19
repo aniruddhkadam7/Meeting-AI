@@ -1,9 +1,9 @@
-//! Adaptive hardware-based performance tuning for REDLY's local STT and RAG
+//! Adaptive hardware-based performance tuning for WhitedotAI's local STT and RAG
 //! pipelines. See docs/performance-tuning.md (once Milestone 7 lands) for
 //! the benchmark evidence behind the tier→config table in `manager.rs`.
 //!
 //! Scope: STT (sherpa-onnx sidecar thread count) and RAG (embedding
-//! batch/thread count, retrieval top_k/context/timeout) only. REDLY's LLM
+//! batch/thread count, retrieval top_k/context/timeout) only. WhitedotAI's LLM
 //! is a cloud API call via `apps/backend` — not touched here, and never
 //! hardware-tiered (see `manager.rs`'s module doc on LLM context).
 

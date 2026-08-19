@@ -48,7 +48,7 @@ pub fn get_performance_mode(state: State<'_, PerformanceState>) -> Result<Perfor
 /// in-progress recording's STT sidecar on a settings change would be a
 /// worse user experience than a stale thread count for the rest of the
 /// current session. The cloud LLM/backend architecture is untouched by mode
-/// changes entirely — REDLY's LLM call is not hardware-tiered (see
+/// changes entirely — WhitedotAI's LLM call is not hardware-tiered (see
 /// `hardware::manager`'s module doc).
 #[tauri::command]
 pub async fn set_performance_mode(

@@ -135,7 +135,7 @@ pub fn is_capture_excluded(app: &AppHandle) -> bool {
 
 fn build_overlay_window(app: &AppHandle) -> Result<WebviewWindow, String> {
     WebviewWindowBuilder::new(app, OVERLAY_WINDOW_LABEL, WebviewUrl::App("index.html".into()))
-        .title("Interview Assistant — Overlay")
+        .title("WhitedotAI Interview — Overlay")
         .inner_size(OVERLAY_FALLBACK_SIDE, OVERLAY_FALLBACK_SIDE)
         .min_inner_size(320.0, 320.0)
         .resizable(true)

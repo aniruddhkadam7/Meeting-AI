@@ -7,7 +7,11 @@ interface SessionInfo {
   email: string | null;
 }
 
-/// REDLY Cloud account panel: sign in/up against Supabase Auth (via the Rust
+type SignUpResult =
+  | { status: "signedIn"; session: SessionInfo }
+  | { status: "confirmationRequired" };
+
+/// WhitedotAI Cloud account panel: sign in/up against Supabase Auth (via the Rust
 /// `auth` module), or sign out. Cloud sync is entirely opt-in — everything
 /// else in the app works fully offline with no account at all, so this is
 /// deliberately just a small settings-style panel, not a gate the user has
@@ -21,6 +25,7 @@ export function Account({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
+  const [confirmationPending, setConfirmationPending] = useState(false);
 
   useEffect(() => {
     invoke<boolean>("auth_cloud_configured").then(setCloudConfigured).catch(() => setCloudConfigured(false));
@@ -39,12 +44,26 @@ export function Account({ onClose }: { onClose: () => void }) {
   const handleSubmit = useCallback(async () => {
     setBusy(true);
     setError(null);
+    setConfirmationPending(false);
     try {
-      const command = mode === "SIGN_IN" ? "auth_sign_in" : "auth_sign_up";
-      const info = await invoke<SessionInfo>(command, { email, password });
-      setSession(info);
-      setPassword("");
-      await runSync();
+      if (mode === "SIGN_IN") {
+        const info = await invoke<SessionInfo>("auth_sign_in", { email, password });
+        setSession(info);
+        setPassword("");
+        await runSync();
+        return;
+      }
+      const result = await invoke<SignUpResult>("auth_sign_up", { email, password });
+      if (result.status === "signedIn") {
+        setSession(result.session);
+        setPassword("");
+        await runSync();
+      } else {
+        // "Confirm email" is enabled on this Supabase project — the account
+        // was created but has no session until the user clicks the link.
+        setConfirmationPending(true);
+        setPassword("");
+      }
     } catch (err) {
       setError(String(err));
     } finally {
@@ -76,9 +95,9 @@ export function Account({ onClose }: { onClose: () => void }) {
         <div className="modal-body">
           {cloudConfigured === false && (
             <p className="setup-hint">
-              REDLY Cloud isn't configured on this build. Custom Agents and everything else keep
+              WhitedotAI Cloud isn't configured on this build. Custom Agents and everything else keep
               working fully offline; sign-in and cloud sync will appear once this build is connected
-              to REDLY Cloud.
+              to WhitedotAI Cloud.
             </p>
           )}
 
@@ -88,7 +107,7 @@ export function Account({ onClose }: { onClose: () => void }) {
                 Signed in as <strong>{session.email ?? session.userId}</strong>
               </p>
               <p className="setup-hint">
-                Your Custom Agents sync to REDLY Cloud so they survive a reinstall. Everything else
+                Your Custom Agents sync to WhitedotAI Cloud so they survive a reinstall. Everything else
                 (transcripts, recordings) stays local on this device.
               </p>
               {syncStatus && <p className="setup-hint">{syncStatus}</p>}
@@ -100,17 +119,31 @@ export function Account({ onClose }: { onClose: () => void }) {
               <div className="agent-mode-toggle">
                 <button
                   className={`agent-mode-tab${mode === "SIGN_IN" ? " active" : ""}`}
-                  onClick={() => setMode("SIGN_IN")}
+                  onClick={() => {
+                    setMode("SIGN_IN");
+                    setConfirmationPending(false);
+                    setError(null);
+                  }}
                 >
                   Sign in
                 </button>
                 <button
                   className={`agent-mode-tab${mode === "SIGN_UP" ? " active" : ""}`}
-                  onClick={() => setMode("SIGN_UP")}
+                  onClick={() => {
+                    setMode("SIGN_UP");
+                    setConfirmationPending(false);
+                    setError(null);
+                  }}
                 >
                   Create account
                 </button>
               </div>
+              {confirmationPending && (
+                <p className="setup-hint">
+                  Account created. Check your email for a confirmation link, then sign in once
+                  you've confirmed.
+                </p>
+              )}
               <div className="setup-identity-field">
                 <input
                   className="setup-input"
@@ -132,7 +165,7 @@ export function Account({ onClose }: { onClose: () => void }) {
                 />
               </div>
               {error && <p className="error">{error}</p>}
-              <p className="setup-hint">Signing in is optional — REDLY works fully offline without an account.</p>
+              <p className="setup-hint">Signing in is optional — WhitedotAI works fully offline without an account.</p>
             </>
           )}
         </div>
