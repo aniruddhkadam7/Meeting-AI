@@ -12,5 +12,5 @@ mod window;
 
 pub use window::{
     close_overlay_window, is_capture_excluded, show_overlay_window, toggle_overlay_window,
-    OverlayCaptureStatus, OVERLAY_WINDOW_LABEL,
+    OverlayCaptureStatus, MAIN_WINDOW_LABEL, OVERLAY_WINDOW_LABEL,
 };

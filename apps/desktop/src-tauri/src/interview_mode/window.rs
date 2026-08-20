@@ -24,7 +24,40 @@ pub struct OverlayCaptureStatus {
 /// main application window so Interview Mode is the only thing visible, per
 /// the requirement that the large Record/Prepare dashboard must never be
 /// what's on screen while Interview Mode is active.
+///
+/// The main window is hidden LAST, only once the overlay has actually been
+/// built/positioned/shown — not first. Hiding it first (the original order)
+/// left a visible gap between the main window vanishing and the overlay
+/// actually appearing (webview creation + the capture-exclusion IOCTL call
+/// both take real time on a window being created for the first time), which
+/// read as the whole app having closed/crashed rather than a fast transition
+/// to Interview Mode.
 pub fn show_overlay_window(app: &AppHandle) -> Result<OverlayCaptureStatus, String> {
+    let excluded = if let Some(existing) = app.get_webview_window(OVERLAY_WINDOW_LABEL) {
+        log::info!("Interview Mode: reusing existing overlay window");
+        existing.show().map_err(|e| e.to_string())?;
+        existing.set_focus().map_err(|e| e.to_string())?;
+        let excluded = windows_capture_protection::enable_capture_exclusion(&existing).is_ok();
+        log::info!("Interview Mode: capture exclusion re-applied, excluded={excluded}");
+        excluded
+    } else {
+        log::info!("Interview Mode: creating new overlay window");
+        let window = build_overlay_window(app)?;
+        size_and_center(&window);
+
+        let excluded = windows_capture_protection::enable_capture_exclusion(&window).is_ok();
+        if excluded {
+            log::info!("Interview Mode: screen-capture exclusion ENABLED for overlay HWND");
+        } else {
+            log::warn!("Interview Mode: screen-capture exclusion FAILED/UNAVAILABLE for overlay HWND");
+        }
+
+        window.show().map_err(|e| e.to_string())?;
+        window.set_focus().map_err(|e| e.to_string())?;
+        log::info!("Interview Mode: overlay window shown and focused");
+        excluded
+    };
+
     if let Some(main) = app.get_webview_window(MAIN_WINDOW_LABEL) {
         if let Err(e) = main.hide() {
             log::warn!("failed to hide main window when entering Interview Mode: {e}");
@@ -32,30 +65,6 @@ pub fn show_overlay_window(app: &AppHandle) -> Result<OverlayCaptureStatus, Stri
     } else {
         log::warn!("main window not found by label '{MAIN_WINDOW_LABEL}' when entering Interview Mode");
     }
-
-    if let Some(existing) = app.get_webview_window(OVERLAY_WINDOW_LABEL) {
-        log::info!("Interview Mode: reusing existing overlay window");
-        existing.show().map_err(|e| e.to_string())?;
-        existing.set_focus().map_err(|e| e.to_string())?;
-        let excluded = windows_capture_protection::enable_capture_exclusion(&existing).is_ok();
-        log::info!("Interview Mode: capture exclusion re-applied, excluded={excluded}");
-        return Ok(OverlayCaptureStatus { excluded });
-    }
-
-    log::info!("Interview Mode: creating new overlay window");
-    let window = build_overlay_window(app)?;
-    size_and_center(&window);
-
-    let excluded = windows_capture_protection::enable_capture_exclusion(&window).is_ok();
-    if excluded {
-        log::info!("Interview Mode: screen-capture exclusion ENABLED for overlay HWND");
-    } else {
-        log::warn!("Interview Mode: screen-capture exclusion FAILED/UNAVAILABLE for overlay HWND");
-    }
-
-    window.show().map_err(|e| e.to_string())?;
-    window.set_focus().map_err(|e| e.to_string())?;
-    log::info!("Interview Mode: overlay window shown and focused");
 
     Ok(OverlayCaptureStatus { excluded })
 }

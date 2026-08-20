@@ -63,6 +63,15 @@ export function InterviewOverlay() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [captureExcluded, setCaptureExcluded] = useState<boolean | null>(null);
+  // Whether audio capture is confirmed actually running, so the header can
+  // say "Listening" truthfully instead of unconditionally the moment the
+  // overlay opens. `start_system_audio_capture` now only resolves once
+  // WASAPI + STT are both confirmed ready (or rejects with a real error) —
+  // see commands.rs's start_capture_inner — so this reflects real state,
+  // not an assumption. "capture already running" (a second, harmless
+  // invocation racing an already-successful start from InterviewSetup) is
+  // treated as active too, not an error.
+  const [captureActive, setCaptureActive] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [confirmingClose, setConfirmingClose] = useState(false);
   // Shows the opacity percentage in the header for a moment after adjusting.
@@ -234,11 +243,18 @@ export function InterviewOverlay() {
     // the one expected/harmless failure — anything else (e.g. no audio
     // device) must surface, or the overlay would sit on "Waiting for the
     // interviewer to speak…" forever with no explanation.
-    invoke("start_system_audio_capture").catch((e) => {
-      if (String(e) !== "capture already running") {
-        setError(`Could not start audio capture: ${String(e)}`);
-      }
-    });
+    invoke("start_system_audio_capture")
+      .then(() => setCaptureActive(true))
+      .catch((e) => {
+        if (String(e) !== "capture already running") {
+          setError(`Could not start audio capture: ${String(e)}`);
+        } else {
+          // A session was already started elsewhere (e.g. InterviewSetup's
+          // own call, which this effect always races against) — that
+          // session is genuinely active, so this is not a failure.
+          setCaptureActive(true);
+        }
+      });
   }, []);
 
   // Follow the conversation as it grows, the way a chat window does.
@@ -461,14 +477,23 @@ export function InterviewOverlay() {
         data-tauri-drag-region={settings.dragEnabled ? "deep" : undefined}
       >
         <span
-          className={`overlay-rec-dot ${busy ? "busy" : "live"}`}
-          title={busy ? "Answering…" : "Listening"}
+          className={`overlay-rec-dot ${busy ? "busy" : captureActive ? "live" : "starting"}`}
+          title={busy ? "Answering…" : captureActive ? "Listening" : "Starting…"}
         />
         <div className="overlay-title">
           {/* While adjusting, the title doubles as the readout — the change
               itself can be hard to judge against a dark desktop, and this
-              avoids spending permanent header space on a number. */}
-          {opacityHint ? `Opacity ${opacityPercent}%` : busy ? "Answering…" : "Listening"}
+              avoids spending permanent header space on a number. Before
+              capture is confirmed active, this says "Starting…" rather than
+              claiming "Listening" while audio/STT may still be initializing
+              (or may have failed — see the error banner below). */}
+          {opacityHint
+            ? `Opacity ${opacityPercent}%`
+            : busy
+              ? "Answering…"
+              : captureActive
+                ? "Listening"
+                : "Starting…"}
         </div>
 
         <div className="overlay-header-actions">

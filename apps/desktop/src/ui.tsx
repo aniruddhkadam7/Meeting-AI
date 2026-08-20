@@ -82,3 +82,22 @@ interface SkeletonProps {
 export function Skeleton({ width = "100%", height = "1em" }: SkeletonProps) {
   return <span className="skeleton" style={{ width, height }} />;
 }
+
+interface SpinnerProps {
+  size?: number;
+  className?: string;
+}
+
+/// A small rotating ring, for inline use next to a "Starting…"/"Loading…"
+/// label — e.g. inside a disabled button while an async action is in flight.
+export function Spinner({ size = 14, className }: SpinnerProps) {
+  const classes = ["spinner", className].filter(Boolean).join(" ");
+  return (
+    <span
+      className={classes}
+      style={{ width: size, height: size }}
+      role="status"
+      aria-label="Loading"
+    />
+  );
+}

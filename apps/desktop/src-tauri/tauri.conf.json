@@ -33,7 +33,17 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "createUpdaterArtifacts": true
+    "resources": {
+      "../../../packages/stt/dist/stt-sidecar": "stt-sidecar",
+      "../../../models/stt/nemo-fastconformer-80ms-int8": "stt-model",
+      "../../../packages/rag/dist/rag-lite": "rag-lite"
+    },
+    "createUpdaterArtifacts": true,
+    "windows": {
+      "nsis": {
+        "installerHooks": "./windows/hooks.nsh"
+      }
+    }
   },
   "plugins": {
     "updater": {

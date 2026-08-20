@@ -45,7 +45,18 @@ pub struct StageTiming {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PipelineStage {
-    /// Audio capture start -> STT sidecar process spawned and ready.
+    /// Start Interview click -> WASAPI loopback capture confirmed
+    /// initialized and streaming (not merely "capture thread spawned" —
+    /// see `audio::system_capture`'s readiness handshake).
+    AudioCaptureReady,
+    /// Start Interview click -> STT sidecar signaled `{"type":"ready"}`
+    /// (model loaded, accepting audio) — the number that actually gates
+    /// when the UI is allowed to report "Recording" (see
+    /// `commands::start_system_audio_capture`).
+    SttReady,
+    /// Audio capture start -> STT sidecar process spawned and ready. Kept
+    /// as the umbrella "total startup" measurement alongside the more
+    /// granular `AudioCaptureReady`/`SttSpawned`/`SttReady` breakdown above.
     SttSessionStart,
     /// Speech start -> first partial transcript text.
     SttFirstPartial,
@@ -72,6 +83,8 @@ pub enum PipelineStage {
 impl PipelineStage {
     pub fn label(self) -> &'static str {
         match self {
+            Self::AudioCaptureReady => "audio_capture_ready",
+            Self::SttReady => "stt_ready",
             Self::SttSessionStart => "stt_session_start",
             Self::SttFirstPartial => "stt_first_partial",
             Self::SttFinal => "stt_final",
@@ -259,6 +272,8 @@ mod tests {
         // corresponding label — `label()`'s match is exhaustive, so this
         // mostly documents the full set for readers of this test file.
         let stages = [
+            PipelineStage::AudioCaptureReady,
+            PipelineStage::SttReady,
             PipelineStage::SttSessionStart,
             PipelineStage::SttFirstPartial,
             PipelineStage::SttFinal,

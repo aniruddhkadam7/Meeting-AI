@@ -11,7 +11,7 @@ import {
   type Humanization,
 } from "./overlaySettings";
 import type { DocumentType } from "./types";
-import { Button } from "./ui";
+import { Button, Spinner } from "./ui";
 
 interface Props {
   onStart: () => void;
@@ -151,6 +151,35 @@ export function InterviewSetup({ onStart }: Props) {
   // overwrites something the user deliberately entered or edited.
   const roleTouched = useRef(false);
   const companyTouched = useRef(false);
+
+  // Prewarms the STT sidecar the moment this screen mounts, rather than
+  // waiting for Start Interview to be clicked. `start_system_audio_capture`
+  // blocks until the ASR model has fully loaded — typically several seconds,
+  // more on slower hardware (see commands.rs's start_capture_inner and
+  // stt/sidecar.rs's SttSidecar::spawn) — so kicking it off here lets that
+  // load overlap with the user filling in role/company and uploading
+  // documents. By the time Start Interview is actually clicked, capture is
+  // usually already warm and the overlay opens already listening in real
+  // time instead of the click itself eating the full load time.
+  //
+  // `startInterview` below awaits this exact promise rather than issuing a
+  // fresh `start_system_audio_capture` call, since a second concurrent call
+  // while this one is still mid-load would just get "capture already
+  // running" back immediately — true once the session reaches Recording, but
+  // also returned while it's still Starting, which would make Start
+  // Interview proceed to show the overlay before capture is actually ready.
+  const prewarmRef = useRef<Promise<void> | null>(null);
+  useEffect(() => {
+    const promise = invoke<void>("start_system_audio_capture").catch((e) => {
+      if (String(e) !== "capture already running") throw e;
+    });
+    prewarmRef.current = promise;
+    // Nothing awaits this while the user is still on the setup screen — swallow
+    // here so a genuine failure doesn't surface as an unhandled rejection.
+    // startInterview() awaits the same promise and reports the same error
+    // there if it's still failing once the user actually clicks Start.
+    promise.catch(() => {});
+  }, []);
 
   const handleRoleChange = useCallback((value: string) => {
     roleTouched.current = true;
@@ -347,6 +376,15 @@ export function InterviewSetup({ onStart }: Props) {
           }).catch((e) => console.error(`Failed to upload ${section.label}:`, e));
         }
       }
+      // Wait on the prewarm kicked off when this screen mounted (usually
+      // already resolved by now) rather than invoking
+      // start_system_audio_capture again — see the comment on prewarmRef.
+      // Falls back to a fresh call only if the mount effect somehow hasn't
+      // run yet (e.g. an extremely fast click).
+      await (prewarmRef.current ??
+        invoke("start_system_audio_capture").catch((e) => {
+          if (String(e) !== "capture already running") throw e;
+        }));
       await invoke("show_interview_overlay");
       onStart();
     } catch (e) {
@@ -420,7 +458,14 @@ export function InterviewSetup({ onStart }: Props) {
           </div>
 
           <Button variant="primary" onClick={startInterview} disabled={starting}>
-            {starting ? "Starting…" : "Start Interview"}
+            {starting ? (
+              <span className="btn-spinner">
+                <Spinner />
+                Starting…
+              </span>
+            ) : (
+              "Start Interview"
+            )}
           </Button>
         </div>
       </section>

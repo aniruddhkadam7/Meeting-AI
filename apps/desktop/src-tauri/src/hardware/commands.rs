@@ -15,6 +15,11 @@ pub struct PerformanceModeInfo {
     pub mode: PerformanceMode,
     pub detected_tier: HardwareTier,
     pub effective_config: PerformanceConfig,
+    /// `true` only immediately after a launch where the persisted hardware
+    /// fingerprint didn't match this machine's — i.e. this is a different
+    /// physical PC than the one an explicit mode override was chosen on,
+    /// so it was reset to Adaptive. See `hardware::store`'s module doc.
+    pub hardware_refreshed: bool,
 }
 
 #[tauri::command]
@@ -30,18 +35,23 @@ pub fn get_performance_mode(state: State<'_, PerformanceState>) -> Result<Perfor
         mode: manager.mode(),
         detected_tier: manager.detected_tier(),
         effective_config: manager.effective_config(),
+        hardware_refreshed: manager.hardware_refreshed(),
     })
 }
 
-/// Persists the mode, updates the in-memory manager, and restarts the local
-/// RAG sidecar with the new tier's embedding config — Python's `Settings`
-/// class (packages/rag/app/core/config.py) reads `RAG_EMBED_BATCH_SIZE`/
-/// `RAG_TORCH_THREADS` once at process startup, so applying a new value
-/// requires a fresh process (see `rag::RagServiceHandle::restart`'s doc
-/// comment). This means a mode change causes a brief (roughly the same
-/// window as initial app startup's RAG health-poll) interruption to local
-/// document search/upload — accepted as correct, simple UX rather than
-/// attempting live in-process reconfiguration.
+/// Persists the mode and updates the in-memory manager immediately (so the
+/// Performance panel's UI reflects the new mode right away — no reason to
+/// make the user wait on the RAG sidecar for that), then restarts the local
+/// RAG sidecar with the new tier's embedding config in the background —
+/// Python's `Settings` class (packages/rag/app/core/config.py) reads
+/// `RAG_EMBED_BATCH_SIZE`/`RAG_TORCH_THREADS` once at process startup, so
+/// applying a new value requires a fresh process (see
+/// `rag::RagServiceHandle::restart`'s doc comment). This means a mode change
+/// causes a brief background interruption to local document search/upload —
+/// accepted as correct, simple UX rather than attempting live in-process
+/// reconfiguration — but it must not block the mode switch itself from
+/// appearing to take effect, especially on low-end hardware where the
+/// embedding model can take tens of seconds to reload.
 ///
 /// STT thread count does NOT trigger any sidecar restart here — it takes
 /// effect on the next recording session, since forcibly killing an
@@ -57,11 +67,14 @@ pub async fn set_performance_mode(
     performance: State<'_, PerformanceState>,
     mode: PerformanceMode,
 ) -> Result<(), String> {
-    store::save_mode(&app, mode)?;
-
     let embed_config = {
         let mut manager = performance.0.lock().map_err(|e| e.to_string())?;
+        store::save_mode(&app, mode, &manager.hardware_fingerprint())?;
         manager.set_mode(mode);
+        // The user just made an explicit choice on THIS machine — any
+        // earlier "reset because hardware changed" notice is now stale and
+        // should stop showing.
+        manager.set_hardware_refreshed(false);
         let cfg = manager.effective_config();
         EmbedProcessConfig {
             embed_batch_size: cfg.rag_embed_batch_size,
@@ -78,22 +91,20 @@ pub async fn set_performance_mode(
         rag_slot.is_some()
     };
     if needs_restart {
-        {
-            let mut rag_slot = state.rag_service.lock().map_err(|e| e.to_string())?;
-            if let Some(handle) = rag_slot.as_mut() {
-                handle.restart(embed_config)?;
-            }
+        let mut rag_slot = state.rag_service.lock().map_err(|e| e.to_string())?;
+        if let Some(handle) = rag_slot.as_mut() {
+            handle.restart(embed_config, Some(&app))?;
         }
-        // Same reasoning as the initial startup poll in lib.rs's .setup():
-        // the embedding model can take a while to load on first request
-        // after a fresh process starts, so this waits before returning
-        // rather than reporting success while the service is still cold.
-        // A `false` return here just means RAG commands will report
-        // "unavailable" until it does come up, same as at initial startup.
-        // Run via spawn_blocking (not directly in this async fn) since the
-        // health poll sleeps synchronously for up to ~60s — blocking that
-        // long directly on this task would tie up a tokio worker thread.
-        let _ = tauri::async_runtime::spawn_blocking(crate::rag::wait_until_healthy_default).await;
+        // Deliberately NOT awaited: the embedding model reload this triggers
+        // can take tens of seconds on low-end hardware (see
+        // docs/i3-stt-profiling-report.html's model-load figures), and this
+        // command has already done everything the mode switch itself needs
+        // (persisted + applied above) — making the caller wait on top of
+        // that would reintroduce the exact "button looks frozen" UX problem
+        // this change fixes. RAG commands already report "unavailable"
+        // gracefully until the fresh process reports healthy, the same as
+        // at initial startup.
+        tauri::async_runtime::spawn_blocking(crate::rag::wait_until_healthy_default);
     }
 
     Ok(())

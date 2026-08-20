@@ -1,6 +1,6 @@
 export type AudioSource = "SYSTEM_AUDIO" | "MICROPHONE";
 
-export type RecordingState = "IDLE" | "RECORDING" | "PAUSED" | "STOPPED";
+export type RecordingState = "IDLE" | "STARTING" | "RECORDING" | "PAUSED" | "STOPPING" | "STOPPED";
 
 export interface AudioLevelEvent {
   source: AudioSource;

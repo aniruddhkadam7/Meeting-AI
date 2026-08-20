@@ -302,7 +302,7 @@ STT session-start/first-partial/first-final path (`commands.rs`'s
 
 | Stage | What it measures | Where |
 |---|---|---|
-| `stt_session_start` | Audio capture start -> STT sidecar process spawned | `commands.rs`, `notes_mode/dictation.rs` |
+| `stt_session_start` | STT sidecar spawn -> audio capture confirmed initialized (order reversed from audio-first — see §9) | `commands.rs`, `notes_mode/dictation.rs` |
 | `stt_first_partial` | Forwarder-thread start -> first partial transcript of the session | `commands.rs` (system audio only — see note below) |
 | `stt_final` | Forwarder-thread start -> first finalized transcript segment of the session | `commands.rs` |
 | `rag_retrieval` | One `RetrievalPlanner::plan_for_question` call (HTTP round trip + local filter/dedup) | all four ask-question call sites |
@@ -453,6 +453,90 @@ accept free-text parameters.
    environment could not do) and capture the resulting
    `question_to_answer`/`llm_first_token` log lines to get real numbers,
    rather than relying on the composed-flow unit test as a stand-in.
+
+---
+
+## 9. real-i3-latency-diagnosis: startup-ordering fix for the "silence, then a burst" symptom
+
+**Reported symptom** (real-world testing on an i3-1315U/8GB ThinkPad —
+the same machine §3's tier table is calibrated against): starting an
+interview showed nothing for a few seconds, then the audio from that
+silent window appeared all at once, after which transcription tracked
+live speech normally.
+
+**Root cause.** `commands.rs`'s `start_capture_inner` started WASAPI
+system-audio capture *before* spawning the STT sidecar. `SttSidecar::spawn`
+blocks until the sherpa-onnx model has finished loading (`sidecar.py`'s
+`build_recognizer`) and the process signals ready — during that window,
+capture was already pushing chunks into an **unbounded** channel with
+nothing reading it. Once the sidecar came up, the pipeline thread that
+drains that channel (`audio::pipeline::run_stt_pipeline`) has no real-time
+pacing, so it drained the entire backlog immediately — the buffered speech
+decoded in a burst, then the stream caught up to live audio. Confirmed by
+directly timing the sidecar's spawn-to-ready window in isolation on the dev
+machine used for this fix (`packages/stt/streaming_asr_sidecar/sidecar.py`,
+timed via `.NET Process.Start` to exclude WASAPI/audio-routing variables):
+**3.1s / 6.3s / 10.3s** across three runs (cold vs. warm OS file cache for
+the ~130MB int8 model). A weaker CPU and slower storage — both true of the
+reported i3/8GB hardware relative to this dev machine — would only widen
+that window, matching "a few seconds" in the report.
+
+**Fix.** Reordered `start_capture_inner` (`commands.rs`) and the headless
+`pipeline_test` binary (`src/bin/pipeline_test.rs`, kept in sync since its
+own doc comment claims to drive "the same code the Tauri command runs") to:
+RAG-throttle signal -> **STT sidecar spawn (blocks until ready)** -> audio
+channel created -> **audio capture start** -> STT pipeline thread. No audio
+channel exists, and so no backlog can accumulate, until the sidecar is
+already able to keep up with it — this prevents the backlog rather than
+draining it faster. Error-path cleanup was mirrored to match: a capture
+failure now shuts down the already-running sidecar and undoes the RAG
+throttle (previously the reverse — a sidecar failure stopped/joined the
+already-running capture thread). RAG throttle timing, sidecar
+readiness/error handling, and all `STT_NUM_THREADS`/pressure-adaptation
+logic are unchanged — only the relative order of two already-existing,
+already-blocking calls moved.
+
+**Verified in this pass:**
+- `cargo build --lib --bins`: clean (pre-existing dead-code warnings only).
+- `cargo test --lib`: 164 passed, 0 failed, 1 pre-existing ignored
+  microbench — no test assumed the old ordering.
+- Real execution log from `pipeline_test` on this dev machine (not
+  simulated) shows the corrected order directly:
+  ```
+  INFO desktop_lib::stt::sidecar STT sidecar ready (SYSTEM_AUDIO)
+  INFO desktop_lib::audio::system_capture system audio loopback started: 48000 Hz, 2 ch -> 16000 Hz mono
+  ```
+  — sidecar-ready now logs before capture-start, where it previously
+  logged after.
+- STT model-load time measured in isolation (see Root cause above):
+  3.1-10.3s on this dev machine, confirming the window is real and
+  multi-second, not a rounding error.
+
+**What could NOT be verified in this pass:**
+- **Not run on the actual reported i3-1315U/8GB ThinkPad** — this
+  environment has no access to that physical machine. All measurements
+  above are from the dev machine this fix was written on.
+- **Live speech round-trip** (backlog=0 at first real speech, first-partial
+  latency once talking begins): attempted via `pipeline_test` with real WAV
+  playback through the default output device, but the played audio did not
+  reach the WASAPI loopback capture at a level above the VAD's silence
+  threshold in this environment (`stt.vad: gate summary` showed 99%+
+  chunks classified silent across repeated attempts) — an audio-routing
+  limitation of this sandbox, not something the code change touches.
+  `docs/stt-benchmark.md`'s per-utterance decode-latency numbers are
+  unaffected either way, since decode speed itself was not changed.
+- **Notes' voice dictation** (`notes_mode/dictation.rs::start_note_dictation`)
+  has the identical audio-before-sidecar ordering and was *not* changed —
+  out of scope for this pass (only "Start Interview" was reported), noted
+  here so it isn't mistaken for already fixed.
+
+**To confirm on the actual ThinkPad:** run with `STT_DIAG=1` (as before)
+and start an interview. Expect `perf: stage=stt_ready ms=...` to show the
+multi-second model-load window (now happening *before* `stage=
+audio_capture_ready`, not overlapping it), and `DIAG ... speech_onset ...
+backlog=N` at the first real speech to read a small `N` (a couple of
+20ms chunks at most) instead of the large backlog a multi-second head
+start used to produce.
 
 ---
 

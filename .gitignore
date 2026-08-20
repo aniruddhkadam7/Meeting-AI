@@ -36,6 +36,20 @@ packages/stt/venv/
 *.egg-info/
 .pytest_cache/
 
+# PyInstaller-frozen build outputs for release-bundled STT/RAG (see
+# packages/stt/scripts/freeze_sidecar.py and
+# packages/rag/scripts/freeze_rag_lite.py) — regenerated on demand, never
+# committed, same reasoning as the .venv dirs above. .spec files are
+# reproducible from the freeze scripts' own PyInstaller invocation, so
+# there's nothing hand-edited in them worth tracking either.
+packages/stt/build/
+packages/stt/dist/
+packages/stt/*.spec
+packages/rag/.venv-lite/
+packages/rag/build/
+packages/rag/dist/
+packages/rag/*.spec
+
 # STT benchmark spike: code is tracked, but its venv, downloaded models,
 # recorded audio and result dumps are all large and machine-specific.
 packages/stt-bench/.venv/

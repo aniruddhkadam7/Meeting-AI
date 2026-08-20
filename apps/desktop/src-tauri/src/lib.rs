@@ -18,6 +18,7 @@ mod history;
 mod interview_mode;
 mod notes_mode;
 mod overlay_window;
+mod process_util;
 mod rag;
 mod sales_mode;
 mod state;
@@ -39,6 +40,23 @@ pub fn run() {
     tls_init::ensure_installed();
 
     tauri::Builder::default()
+        // Must be the very first plugin registered (Tauri requirement). A
+        // second launch of the app (double-clicking the exe/shortcut again,
+        // including while the first launch is still mid-startup and its
+        // window isn't visible yet) is redirected here instead of spawning a
+        // second, fully separate process — the new invocation exits
+        // immediately and this callback just brings the existing app to the
+        // front instead.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            let focus_target = app
+                .get_webview_window(interview_mode::OVERLAY_WINDOW_LABEL)
+                .filter(|w| w.is_visible().unwrap_or(false))
+                .or_else(|| app.get_webview_window(interview_mode::MAIN_WINDOW_LABEL));
+            if let Some(window) = focus_target {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -92,7 +110,8 @@ pub fn run() {
             // is still starting up or if it's unavailable entirely (see
             // rag::process::RagServiceHandle::spawn).
             let handle = app.handle().clone();
-            std::thread::spawn(move || match rag::RagServiceHandle::spawn(initial_embed_config) {
+            let handle_for_spawn = handle.clone();
+            std::thread::spawn(move || match rag::RagServiceHandle::spawn(initial_embed_config, Some(&handle_for_spawn)) {
                 Ok(service) => {
                     if service.is_some() {
                         rag::wait_until_healthy_default();

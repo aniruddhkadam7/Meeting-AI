@@ -60,7 +60,7 @@ pub fn start_note_dictation(
     // `_checked`: same reasoning as start_system_audio_capture — dictation
     // session start is a natural memory-pressure checkpoint.
     let stt_num_threads = crate::hardware::effective_config_checked(&app).stt_num_threads;
-    let mut sidecar = SttSidecar::spawn(AudioSource::Microphone, stt_tx, Some(stt_num_threads))?;
+    let mut sidecar = SttSidecar::spawn(AudioSource::Microphone, stt_tx, Some(stt_num_threads), Some(&app))?;
     crate::hardware::telemetry::finish(
         session_start,
         crate::hardware::telemetry::PipelineStage::SttSessionStart,

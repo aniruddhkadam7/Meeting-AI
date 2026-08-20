@@ -118,40 +118,62 @@ class KnowledgeBaseService:
             extracted_path = self._settings.extracted_dir / f"{metadata.document_id}.txt"
             extracted_path.write_text(cleaned, encoding="utf-8")
 
-            metadata.status = DocumentStatus.CHUNKING
-            self._store.upsert_document(metadata)
-            raw_chunks = chunk_text(
-                cleaned,
-                chunk_size_tokens=self._settings.chunk_size_tokens,
-                overlap_tokens=self._settings.chunk_overlap_tokens,
-            )
-            if not raw_chunks:
-                raise ValueError("document produced no chunks")
-
-            chunks = [
-                Chunk(
-                    chunk_id=new_id("chunk"),
-                    document_id=metadata.document_id,
-                    document_type=document_type,
-                    filename=filename,
-                    chunk_index=raw_chunk.index,
-                    text=raw_chunk.text,
-                    section=raw_chunk.section,
-                    agent_id=agent_id,
+            # Extraction/cleaning above never needs torch — only chunk/embed/
+            # index below does (EmbeddingProvider.embed lazily imports
+            # torch/sentence-transformers on first call). A release build may
+            # ship this service without that ~800MB dependency at all (see
+            # docs on the desktop app's bundled "rag-lite" build) — in that
+            # case ModuleNotFoundError/ImportError here means "no semantic
+            # search available", not "this upload failed". The extracted
+            # text is already safely on disk by this point, so the document
+            # is still marked READY (with chunk_count=0) rather than ERROR,
+            # and `upload_document`/`get_document_text` keep working — only
+            # in-interview RAG search over this document silently finds
+            # nothing, which is already a best-effort/non-fatal path (see
+            # RetrievalPlanner on the Rust side).
+            try:
+                metadata.status = DocumentStatus.CHUNKING
+                self._store.upsert_document(metadata)
+                raw_chunks = chunk_text(
+                    cleaned,
+                    chunk_size_tokens=self._settings.chunk_size_tokens,
+                    overlap_tokens=self._settings.chunk_overlap_tokens,
                 )
-                for raw_chunk in raw_chunks
-            ]
+                if not raw_chunks:
+                    raise ValueError("document produced no chunks")
 
-            metadata.status = DocumentStatus.EMBEDDING
-            self._store.upsert_document(metadata)
-            embeddings = self._embeddings.embed([c.text for c in chunks])
+                chunks = [
+                    Chunk(
+                        chunk_id=new_id("chunk"),
+                        document_id=metadata.document_id,
+                        document_type=document_type,
+                        filename=filename,
+                        chunk_index=raw_chunk.index,
+                        text=raw_chunk.text,
+                        section=raw_chunk.section,
+                        agent_id=agent_id,
+                    )
+                    for raw_chunk in raw_chunks
+                ]
 
-            metadata.status = DocumentStatus.INDEXING
-            self._store.upsert_document(metadata)
-            self._store.insert_chunks(chunks, embeddings)
+                metadata.status = DocumentStatus.EMBEDDING
+                self._store.upsert_document(metadata)
+                embeddings = self._embeddings.embed([c.text for c in chunks])
+
+                metadata.status = DocumentStatus.INDEXING
+                self._store.upsert_document(metadata)
+                self._store.insert_chunks(chunks, embeddings)
+                metadata.chunk_count = len(chunks)
+            except (ImportError, ModuleNotFoundError) as exc:
+                logger.warning(
+                    "[DOCUMENT] embedding unavailable (%s) — document_id=%s stays "
+                    "text-only, no semantic search over it",
+                    exc,
+                    metadata.document_id,
+                )
+                metadata.chunk_count = 0
 
             metadata.status = DocumentStatus.READY
-            metadata.chunk_count = len(chunks)
             metadata.updated_at = time.time()
             self._store.upsert_document(metadata)
 

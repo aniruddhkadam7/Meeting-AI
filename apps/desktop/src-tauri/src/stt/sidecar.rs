@@ -1,18 +1,38 @@
 use std::io::{BufRead, BufReader, Write};
-use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::mpsc::Sender;
+use std::process::{Child, ChildStdin, Stdio};
+use std::sync::mpsc::{self, Sender};
 use std::thread::JoinHandle;
+use std::time::Duration;
+
+use tauri::{path::BaseDirectory, AppHandle, Manager};
 
 use crate::audio::AudioSource;
+use crate::process_util::hidden_command;
 
 use super::events::{SidecarLine, SttEvent, SttEventKind};
+
+/// How long `SttSidecar::spawn` will wait for the sidecar to signal
+/// `{"type":"ready"}` (or an error, or exit) before giving up. Overridable
+/// via `STT_READY_TIMEOUT_MS`, same pattern as the sidecar's other tuning
+/// knobs (`STT_NUM_THREADS`, `STT_END_SILENCE_MS`, ...) — the default is
+/// generous relative to normal model-load time (typically a couple of
+/// seconds) specifically to tolerate a slower load under CPU/memory
+/// contention on constrained hardware, without leaving a genuinely hung
+/// process waiting forever.
+fn ready_timeout() -> Duration {
+    std::env::var("STT_READY_TIMEOUT_MS")
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .map(Duration::from_millis)
+        .unwrap_or(Duration::from_millis(20_000))
+}
 
 /// Locates a working Python 3 interpreter. Tries `py -3` first (the standard Windows
 /// launcher, which resolves correctly even when bare `python`/`python3` are shadowed
 /// by the Microsoft Store app-execution-alias stub — see docs/architecture.md), then
 /// falls back to `python`.
 fn find_python() -> Option<(String, Vec<String>)> {
-    if Command::new("py")
+    if hidden_command("py")
         .args(["-3", "--version"])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -22,7 +42,7 @@ fn find_python() -> Option<(String, Vec<String>)> {
     {
         return Some(("py".to_string(), vec!["-3".to_string()]));
     }
-    if Command::new("python")
+    if hidden_command("python")
         .arg("--version")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -79,12 +99,45 @@ impl SttEngineKind {
 /// The STT sidecar's own virtualenv interpreter. sherpa-onnx and its ONNX
 /// Runtime dependency are heavy enough to deserve isolation, mirroring how
 /// `packages/rag` and `apps/backend` each own a venv rather than sharing one.
+///
+/// Only meaningful in dev: a plain venv is not relocatable (its `python.exe`
+/// hardcodes the absolute path of the base Python install it was created
+/// from — see `pyvenv.cfg`), so it is never bundled into a release build.
+/// Installed builds instead run the PyInstaller-frozen executable resolved
+/// by `frozen_sidecar_path` below, which has no such dependency.
 fn stt_venv_python() -> Option<std::path::PathBuf> {
     let candidate = stt_package_dir()
         .join(".venv")
         .join("Scripts")
         .join("python.exe");
     candidate.exists().then_some(candidate)
+}
+
+/// The PyInstaller-frozen sidecar bundled as a resource for release builds
+/// (see `bundle.resources` in `tauri.conf.json`, built via
+/// `packages/stt/scripts/freeze_sidecar.py`) — a single self-contained
+/// executable with its own Python runtime and sherpa-onnx/numpy embedded, so
+/// end users need nothing installed to run it. `None` when there's no
+/// `AppHandle` (the headless `bin/pipeline_test*.rs` binaries) or the
+/// resource simply isn't there (plain `cargo build`/`tauri dev`, where the
+/// venv path above is used instead).
+fn frozen_sidecar_path(app: Option<&AppHandle>) -> Option<std::path::PathBuf> {
+    let app = app?;
+    let candidate = app
+        .path()
+        .resolve("stt-sidecar/stt-sidecar.exe", BaseDirectory::Resource)
+        .ok()?;
+    candidate.exists().then_some(candidate)
+}
+
+/// The STT model directory bundled as a resource (see `bundle.resources` in
+/// `tauri.conf.json`). `None` falls back to `sidecar.py`'s own
+/// `STT_MODEL_DIR`-or-relative-default resolution, which is what dev/test
+/// runs (including the headless `bin/pipeline_test*.rs` binaries) rely on.
+fn resource_model_dir(app: Option<&AppHandle>) -> Option<std::path::PathBuf> {
+    let app = app?;
+    let candidate = app.path().resolve("stt-model", BaseDirectory::Resource).ok()?;
+    candidate.is_dir().then_some(candidate)
 }
 
 /// A running PocketSphinx sidecar process for one audio source (system audio or
@@ -113,42 +166,77 @@ impl SttSidecar {
     /// (system audio + microphone) can be spawned concurrently — passing the
     /// value explicitly here, rather than mutating `std::env` before each
     /// spawn, avoids a process-global race between them.
-    pub fn spawn(source: AudioSource, events_tx: Sender<SttEvent>, num_threads: Option<u32>) -> Result<Self, String> {
+    ///
+    /// Blocks (up to `ready_timeout()`) until the sidecar signals
+    /// `{"type":"ready"}`, reports `{"type":"error",...}`, or exits without
+    /// either. Earlier versions of this function returned `Ok` the instant
+    /// the child process was spawned — before the model had loaded, and
+    /// sometimes before Python had even finished importing its
+    /// dependencies. On constrained hardware (slow CPU, competing for RAM
+    /// with the RAG service's own startup) that load can be slow or can
+    /// fail outright (e.g. an allocation failure), and neither was ever
+    /// visible to the caller: the command would report success and the UI
+    /// would show "Recording" with a sidecar that was still loading, or had
+    /// already crashed, and would never produce a single transcript event.
+    /// See `docs/performance-tuning.md`'s STT-start-reliability section.
+    ///
+    /// `app`: threaded through so a release build can find and run the
+    /// PyInstaller-frozen sidecar bundled as a resource (see
+    /// `frozen_sidecar_path`) instead of requiring `packages/stt/.venv` —
+    /// which only ever exists on a dev machine, never on an end user's PC —
+    /// to be present. `None` for the headless `bin/pipeline_test*.rs`
+    /// binaries, which have no `AppHandle` and always exercise the
+    /// dev-tree venv/script path below instead.
+    pub fn spawn(
+        source: AudioSource,
+        events_tx: Sender<SttEvent>,
+        num_threads: Option<u32>,
+        app: Option<&AppHandle>,
+    ) -> Result<Self, String> {
         let engine = SttEngineKind::from_env();
-
-        // The streaming engine needs its own venv (sherpa-onnx + onnxruntime);
-        // PocketSphinx is installed against a system interpreter. Fall back to
-        // a system interpreter for either, so a missing venv produces a clear
-        // sidecar-level error rather than a silent failure to start.
-        let (python, mut base_args) = match (engine, stt_venv_python()) {
-            (SttEngineKind::StreamingAsr, Some(venv)) => {
-                (venv.to_string_lossy().to_string(), Vec::new())
-            }
-            (SttEngineKind::StreamingAsr, None) => {
-                return Err(
-                    "STT venv not found at packages/stt/.venv — run: \
-                     py -3 -m venv packages/stt/.venv && \
-                     packages/stt/.venv/Scripts/python.exe -m pip install sherpa-onnx numpy"
-                        .to_string(),
-                )
-            }
-            (SttEngineKind::PocketSphinx, _) => find_python().ok_or_else(|| {
-                "no Python 3 interpreter found (tried `py -3` and `python`)".to_string()
-            })?,
-        };
-
-        let script = engine.script_path();
-        if !script.exists() {
-            return Err(format!("STT sidecar script not found at {}", script.display()));
-        }
 
         let source_arg = match source {
             AudioSource::SystemAudio => "SYSTEM_AUDIO",
             AudioSource::Microphone => "MICROPHONE",
         };
 
-        base_args.push(script.to_string_lossy().to_string());
-        base_args.push(source_arg.to_string());
+        // Three ways to end up with something runnable, tried in order: the
+        // frozen, fully self-contained sidecar bundled into a release build
+        // (no Python needed on the target machine at all); the dev-tree
+        // venv interpreter running the source script directly; or, for the
+        // PocketSphinx comparison engine only (never frozen — it's not the
+        // production engine), whatever system Python is on PATH.
+        let (executable, args) = if let (SttEngineKind::StreamingAsr, Some(frozen)) =
+            (engine, frozen_sidecar_path(app))
+        {
+            (frozen.to_string_lossy().to_string(), vec![source_arg.to_string()])
+        } else {
+            let (python, mut base_args) = match (engine, stt_venv_python()) {
+                (SttEngineKind::StreamingAsr, Some(venv)) => {
+                    (venv.to_string_lossy().to_string(), Vec::new())
+                }
+                (SttEngineKind::StreamingAsr, None) => {
+                    return Err(
+                        "STT venv not found at packages/stt/.venv — run: \
+                         py -3 -m venv packages/stt/.venv && \
+                         packages/stt/.venv/Scripts/python.exe -m pip install sherpa-onnx numpy"
+                            .to_string(),
+                    )
+                }
+                (SttEngineKind::PocketSphinx, _) => find_python().ok_or_else(|| {
+                    "no Python 3 interpreter found (tried `py -3` and `python`)".to_string()
+                })?,
+            };
+
+            let script = engine.script_path();
+            if !script.exists() {
+                return Err(format!("STT sidecar script not found at {}", script.display()));
+            }
+
+            base_args.push(script.to_string_lossy().to_string());
+            base_args.push(source_arg.to_string());
+            (python, base_args)
+        };
 
         // Trailing silence before the current utterance is finalized. Settable
         // via the launch environment so it can be tuned without a rebuild. The
@@ -156,8 +244,8 @@ impl SttSidecar {
         // when this is unset rather than having one value imposed here.
         let end_silence_ms = std::env::var("STT_END_SILENCE_MS").ok();
 
-        let mut command = Command::new(&python);
-        command.args(&base_args);
+        let mut command = hidden_command(&executable);
+        command.args(&args);
         if let Some(ms) = end_silence_ms {
             command.env("STT_END_SILENCE_MS", ms);
         }
@@ -171,7 +259,13 @@ impl SttSidecar {
                 }
             }
         }
-        if let Ok(dir) = std::env::var("STT_MODEL_DIR") {
+        // A bundled model resource (release builds) takes priority over
+        // whatever STT_MODEL_DIR the parent process happens to have set —
+        // the dev/test fallback below is only meaningful when there's no
+        // bundle to find one in.
+        if let Some(dir) = resource_model_dir(app) {
+            command.env("STT_MODEL_DIR", dir);
+        } else if let Ok(dir) = std::env::var("STT_MODEL_DIR") {
             command.env("STT_MODEL_DIR", dir);
         }
 
@@ -180,7 +274,7 @@ impl SttSidecar {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .map_err(|e| format!("failed to spawn STT sidecar ({python}): {e}"))?;
+            .map_err(|e| format!("failed to spawn STT sidecar ({executable}): {e}"))?;
 
         let stdin = child.stdin.take();
         let stdout = child
@@ -201,9 +295,17 @@ impl SttSidecar {
                 .ok();
         }
 
+        let (ready_tx, ready_rx) = mpsc::channel::<Result<(), String>>();
+
         let reader_thread = std::thread::Builder::new()
             .name("stt-sidecar-reader".into())
             .spawn(move || {
+                // Set at most once, on whichever comes first: a Ready line,
+                // an Error line, or stdout closing without either. Every
+                // later line is forwarded normally regardless — this only
+                // gates the one-time readiness signal `spawn()` is waiting
+                // on, never the ongoing partial/final event stream.
+                let mut ready_signaled = false;
                 let reader = BufReader::new(stdout);
                 for line in reader.lines().map_while(Result::ok) {
                     if line.trim().is_empty() {
@@ -212,6 +314,10 @@ impl SttSidecar {
                     match serde_json::from_str::<SidecarLine>(&line) {
                         Ok(SidecarLine::Ready) => {
                             log::info!("STT sidecar ready ({source_arg})");
+                            if !ready_signaled {
+                                ready_signaled = true;
+                                let _ = ready_tx.send(Ok(()));
+                            }
                         }
                         Ok(SidecarLine::Partial { text, source }) => {
                             let _ = events_tx.send(SttEvent {
@@ -238,14 +344,42 @@ impl SttSidecar {
                         }
                         Ok(SidecarLine::Error { message }) => {
                             log::error!("STT sidecar error: {message}");
+                            if !ready_signaled {
+                                ready_signaled = true;
+                                let _ = ready_tx.send(Err(message));
+                            }
                         }
                         Err(err) => {
                             log::warn!("unparseable STT sidecar line: {line} ({err})");
                         }
                     }
                 }
+                // stdout closed (process exited) without ever signaling
+                // ready — e.g. it crashed during model load before managing
+                // to emit even an Error line. Surface that as a failure too,
+                // rather than leaving `spawn()` waiting until its timeout
+                // for a process that has already exited.
+                if !ready_signaled {
+                    let _ = ready_tx.send(Err("STT sidecar exited before signaling ready".to_string()));
+                }
             })
             .map_err(|e| e.to_string())?;
+
+        match ready_rx.recv_timeout(ready_timeout()) {
+            Ok(Ok(())) => {}
+            Ok(Err(message)) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = reader_thread.join();
+                return Err(format!("STT sidecar failed to start: {message}"));
+            }
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = reader_thread.join();
+                return Err("STT sidecar did not become ready in time".to_string());
+            }
+        }
 
         Ok(Self {
             child,

@@ -107,11 +107,19 @@ pub(super) fn config_for_tier(tier: HardwareTier, logical_cores: usize) -> Perfo
             rag_torch_threads: 1,
         },
         HardwareTier::Standard => PerformanceConfig {
-            // stt_num_threads stays low (2, not 4) — the sweep found no
-            // latency reason to go higher; kept at 2 rather than 1 purely
-            // as a small margin against Standard-tier machines also running
-            // RAG concurrently, not because STT itself benefits.
-            stt_num_threads: 2,
+            // Raised from 2 to 4 after field testing on a real low-end
+            // machine (Intel i5-6300U, 2-core/4-thread, 2016 mobile ULV
+            // chip) showed STT genuinely falling behind live speech —
+            // backlog growing over time rather than staying flat, i.e.
+            // decode not keeping up with real-time at 2 threads. The
+            // original "2, not 4" choice was based on a sweep run entirely
+            // on an i5-13400 (10-core/16-thread 2023 desktop CPU) — docs
+            // explicitly noted that sweep couldn't validate genuinely
+            // lower-core-count hardware and was "a proxy, not a real
+            // low-end measurement." 4 matches this class of machine's full
+            // logical core count rather than leaving half of it idle while
+            // the decoder falls behind.
+            stt_num_threads: 4,
             rag_top_k: 3,
             rag_max_context_chars: 3000,
             rag_similarity_threshold: 0.3,
@@ -179,16 +187,30 @@ pub struct PerformanceManager {
     /// updated to pass a fresh RAM reading keep their prior behavior
     /// exactly.
     pressure: PressureTracker,
+    /// Set by `hardware::init` (via `set_hardware_refreshed`) when the
+    /// persisted hardware fingerprint didn't match this machine's — i.e.
+    /// this launch invalidated a stale, explicit mode override that was
+    /// chosen on a different physical PC. Purely informational (surfaced by
+    /// `get_performance_mode` for the Performance panel, see
+    /// `hardware::commands`); never itself affects `effective_config()`.
+    hardware_refreshed: bool,
 }
 
 impl PerformanceManager {
     pub fn new(profile: HardwareProfile, mode: PerformanceMode) -> Self {
         let tier = tier::classify(&profile);
-        Self { profile, tier, mode, pressure: PressureTracker::default() }
+        Self { profile, tier, mode, pressure: PressureTracker::default(), hardware_refreshed: false }
     }
 
     pub fn profile(&self) -> &HardwareProfile {
         &self.profile
+    }
+
+    /// This machine's hardware fingerprint (see `hardware::fingerprint`) —
+    /// used to tag a persisted mode change so a later launch on different
+    /// hardware knows not to trust it.
+    pub fn hardware_fingerprint(&self) -> String {
+        super::fingerprint::compute(&self.profile)
     }
 
     pub fn detected_tier(&self) -> HardwareTier {
@@ -197,6 +219,15 @@ impl PerformanceManager {
 
     pub fn mode(&self) -> PerformanceMode {
         self.mode
+    }
+
+    pub fn set_hardware_refreshed(&mut self, refreshed: bool) {
+        self.hardware_refreshed = refreshed;
+    }
+
+    /// See `hardware_refreshed` field doc.
+    pub fn hardware_refreshed(&self) -> bool {
+        self.hardware_refreshed
     }
 
     /// Milestone 7: current memory-pressure state, for correlating logged
@@ -313,7 +344,10 @@ mod tests {
     #[test]
     fn standard_tier_config_matches_the_documented_table() {
         let cfg = config_for_tier(HardwareTier::Standard, 6);
-        assert_eq!(cfg.stt_num_threads, 2);
+        // Raised from 2 to 4 after field testing on a real 2-core/4-thread
+        // machine showed STT backlog growing over time at 2 threads — see
+        // the comment on this tier's PerformanceConfig in config_for_tier.
+        assert_eq!(cfg.stt_num_threads, 4);
         assert_eq!(cfg.rag_top_k, 3);
         assert_eq!(cfg.rag_max_context_chars, 3000);
         assert_eq!(cfg.rag_similarity_threshold, 0.3);
@@ -454,6 +488,29 @@ mod tests {
     #[test]
     fn performance_mode_defaults_to_adaptive() {
         assert_eq!(PerformanceMode::default(), PerformanceMode::Adaptive);
+    }
+
+    // -- hardware_refreshed: purely informational, set by hardware::init ----
+
+    #[test]
+    fn hardware_refreshed_defaults_to_false() {
+        let manager = PerformanceManager::new(profile_with(8, 8), PerformanceMode::Adaptive);
+        assert!(!manager.hardware_refreshed());
+    }
+
+    #[test]
+    fn set_hardware_refreshed_is_observable_and_does_not_affect_effective_config() {
+        let mut manager = PerformanceManager::new(profile_with(8, 8), PerformanceMode::Adaptive);
+        let before = manager.effective_config().stt_num_threads;
+        manager.set_hardware_refreshed(true);
+        assert!(manager.hardware_refreshed());
+        assert_eq!(manager.effective_config().stt_num_threads, before);
+    }
+
+    #[test]
+    fn hardware_fingerprint_reflects_this_managers_profile() {
+        let manager = PerformanceManager::new(profile_with(8, 8), PerformanceMode::Adaptive);
+        assert_eq!(manager.hardware_fingerprint(), super::super::fingerprint::compute(manager.profile()));
     }
 
     // -- effective_config_checked: PerformanceManager <-> PressureTracker ---

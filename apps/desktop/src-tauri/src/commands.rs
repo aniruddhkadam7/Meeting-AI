@@ -32,33 +32,127 @@ pub fn list_input_devices() -> Result<Vec<AudioDeviceInfo>, String> {
     AudioDeviceManager::list_input_devices()
 }
 
-/// Starts the full local pipeline: WASAPI system-audio capture -> PocketSphinx
+/// How long a Start request will wait for a previous session's teardown
+/// (`RecordingState::Stopping`) to finish before giving up, when it lands in
+/// that narrow window rather than seeing a clean `Idle`/`Stopped`. Bounded
+/// and polled once per interval — never an unbounded/forever retry — so a
+/// genuinely stuck teardown still surfaces a clear error instead of hanging
+/// the caller.
+const STOPPING_WAIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+const STOPPING_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(50);
+
+/// Starts the full local pipeline: WASAPI system-audio capture -> STT
 /// sidecar -> TranscriptManager -> `transcript:update` / `audio:level` events to
 /// the frontend. No network call happens here; the backend is only contacted later
 /// when the user explicitly clicks "Analyze Interview" (see docs/architecture.md).
+///
+/// Deterministic lifecycle: `Idle`/`Stopped` -> `Starting` -> (STT sidecar
+/// confirmed ready -> audio capture confirmed initialized) -> `Recording`,
+/// or -> `Idle` with a real error on any failure along the way, with
+/// whatever was already spawned cleaned up before returning. The `Starting`
+/// state itself is what makes a second, concurrent Start request harmless
+/// (it is rejected immediately with the same "capture already running"
+/// every caller already treats as expected — see e.g.
+/// `InterviewOverlay.tsx`) instead of racing a second WASAPI/STT startup
+/// against the first. A request that instead lands mid-`Stopping` (a
+/// previous session's teardown still in flight) waits briefly for it to
+/// finish rather than starting a new session while the old one's
+/// device/process handles may still be live. See
+/// `docs/performance-tuning.md`'s STT-start-reliability section for the
+/// full root-cause writeup this replaces, and its real-i3-latency-diagnosis
+/// section for why the sidecar is started before audio capture rather than
+/// after.
 #[tauri::command]
 pub fn start_system_audio_capture(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     log::info!("start_system_audio_capture: invoked");
-    let mut session = state.capture.lock().map_err(|e| e.to_string())?;
-    if session.stop_signal.is_some() {
-        return Err("capture already running".into());
+
+    let mut waited = std::time::Duration::ZERO;
+    loop {
+        let mut session = state.capture.lock().map_err(|e| e.to_string())?;
+        match session.recording_state {
+            RecordingState::Idle | RecordingState::Stopped => {
+                session.recording_state = RecordingState::Starting;
+                break;
+            }
+            RecordingState::Starting | RecordingState::Recording | RecordingState::Paused => {
+                // The exact string every frontend call site already treats
+                // as a harmless "someone else already started it" outcome —
+                // see e.g. InterviewOverlay.tsx's mount effect, which races
+                // this exact call against InterviewSetup's.
+                return Err("capture already running".into());
+            }
+            RecordingState::Stopping => {
+                if waited >= STOPPING_WAIT_TIMEOUT {
+                    return Err(
+                        "a previous session is still shutting down — try again in a moment".into(),
+                    );
+                }
+                drop(session);
+                std::thread::sleep(STOPPING_POLL_INTERVAL);
+                waited += STOPPING_POLL_INTERVAL;
+                continue;
+            }
+        }
+    }
+    let _ = app.emit("recording:state", RecordingStateEvent { state: RecordingState::Starting });
+
+    let result = start_capture_inner(&app, &state);
+
+    match &result {
+        Ok(()) => {
+            let mut session = state.capture.lock().map_err(|e| e.to_string())?;
+            session.recording_state = RecordingState::Recording;
+            drop(session);
+            let _ = app.emit("recording:state", RecordingStateEvent { state: RecordingState::Recording });
+            log::info!("start_system_audio_capture: recording started");
+        }
+        Err(err) => {
+            let mut session = state.capture.lock().map_err(|e| e.to_string())?;
+            session.recording_state = RecordingState::Idle;
+            session.stop_signal = None;
+            session.pause_signal = None;
+            session.system_audio_thread = None;
+            session.mic_thread = None;
+            session.pipeline_thread = None;
+            drop(session);
+            log::error!("start_system_audio_capture: failed to start: {err}");
+            let _ = app.emit("recording:state", RecordingStateEvent { state: RecordingState::Idle });
+        }
     }
 
+    result
+}
+
+/// The actual startup sequence, factored out of `start_system_audio_capture`
+/// so the state-machine bookkeeping (guard, rollback, event emission) around
+/// it stays in one place regardless of which step fails. Everything spawned
+/// here that later steps depend on is cleaned up on its own failure path
+/// before returning `Err` — no partially-started session is ever left
+/// behind for the caller to roll back blindly.
+fn start_capture_inner(app: &tauri::AppHandle, state: &State<'_, AppState>) -> Result<(), String> {
     {
         let mut transcript = state.transcript.lock().map_err(|e| e.to_string())?;
         transcript.clear();
     }
 
-    let (audio_tx, audio_rx) = crossbeam_channel::unbounded();
     let (stt_tx, stt_rx) = std::sync::mpsc::channel();
     let stop = StopSignal::new();
     let pause = PauseSignal::new();
 
     let session_start = crate::hardware::telemetry::Stopwatch::start();
-    let audio_thread = SystemAudioCapture::start(audio_tx, stop.clone())?;
+
+    // STT/RAG scheduling coordination (Phase B): signal RAG indexing to
+    // yield BEFORE spawning the sidecar, not after — the sidecar's own
+    // model-load is itself the most CPU/memory-constrained moment of the
+    // whole startup sequence on Entry/Standard-tier hardware, and it used
+    // to run fully unthrottled while RAG's background indexing/embedding
+    // competed with it for the same scarce resources. No-op on
+    // Performance/HighPerformance tier or when Adaptive doesn't call for
+    // throttling — see hardware::stt_rag_coordination's module doc.
+    crate::hardware::stt_rag_coordination::on_stt_session_started(app);
 
     // `_checked`: this is a natural checkpoint (recording session start) —
     // feeds a fresh RAM reading into the sustained-pressure tracker, which
@@ -66,20 +160,115 @@ pub fn start_system_audio_capture(
     // memory pressure across the last couple of checkpoints (see
     // hardware::pressure). Any resulting downgrade/restoration is logged
     // from within effective_config_checked itself.
-    let stt_num_threads = crate::hardware::effective_config_checked(&app).stt_num_threads;
-    let mut sidecar = SttSidecar::spawn(AudioSource::SystemAudio, stt_tx, Some(stt_num_threads))?;
+    let stt_num_threads = crate::hardware::effective_config_checked(app).stt_num_threads;
+
+    // The STT sidecar is spawned BEFORE audio capture starts — deliberately
+    // reversed from the original order. `SttSidecar::spawn` blocks until the
+    // model has finished loading and the sidecar signals ready (see
+    // stt/sidecar.rs). Starting audio capture first meant WASAPI spent that
+    // entire model-load window pushing chunks into an unbounded channel with
+    // nothing yet consuming them — on slow hardware (e.g. an i3/8GB machine,
+    // where model load can take several seconds instead of the ~100ms seen
+    // on faster dev hardware) that produced a real backlog: silence for a
+    // few seconds, then the backlogged audio decoded in a burst the instant
+    // the sidecar came up, before settling into real-time. Starting the
+    // sidecar first means no audio channel — and so no backlog — exists
+    // until STT is already able to keep up with it. See
+    // `docs/performance-tuning.md`'s real-i3-latency-diagnosis section.
+    let sidecar = match SttSidecar::spawn(AudioSource::SystemAudio, stt_tx, Some(stt_num_threads), Some(app)) {
+        Ok(sidecar) => sidecar,
+        Err(err) => {
+            // Audio capture hasn't started yet at this point — nothing to
+            // stop/join here, only the RAG throttle signal to undo before
+            // surfacing the error.
+            crate::hardware::stt_rag_coordination::on_stt_session_ended(app);
+            return Err(err);
+        }
+    };
+    // Each log site reads a fresh `perf_context(app)` rather than one
+    // captured up front — `effective_config_checked` above is what actually
+    // feeds this session's RAM reading into the pressure tracker, so a
+    // context captured before that checkpoint would log the previous
+    // session's (possibly stale) pressure state / thread count instead of
+    // the one actually in effect for this session.
+    crate::hardware::telemetry::log_stage_ms(
+        crate::hardware::telemetry::PipelineStage::SttReady,
+        session_start.elapsed().as_millis(),
+        &crate::hardware::perf_context(app),
+    );
+
+    // Audio capture starts only now that the sidecar is confirmed ready to
+    // consume it — no window remains during which chunks can queue up
+    // unread.
+    let (audio_tx, audio_rx) = crossbeam_channel::unbounded();
+    // TEMP DIAGNOSTIC: a sender clone purely for polling backlog depth
+    // (`.len()`) — crossbeam senders/receivers are safe to clone for a
+    // second producer, but never clone the *receiver* for this purpose, as
+    // that would steal chunks meant for the real pipeline. Expected to stay
+    // ~0 now that capture only starts once STT is ready.
+    let audio_tx_for_diag = audio_tx.clone();
+
+    let audio_thread = match SystemAudioCapture::start(audio_tx, stop.clone()) {
+        Ok(handle) => handle,
+        Err(err) => {
+            // The sidecar is already spawned (and ready) at this point —
+            // shut it down cleanly and undo the throttle signal before
+            // surfacing the error, so a failed Start never leaves an
+            // orphaned STT process running.
+            sidecar.shutdown();
+            crate::hardware::stt_rag_coordination::on_stt_session_ended(app);
+            return Err(err);
+        }
+    };
+    crate::hardware::telemetry::log_stage_ms(
+        crate::hardware::telemetry::PipelineStage::AudioCaptureReady,
+        session_start.elapsed().as_millis(),
+        &crate::hardware::perf_context(app),
+    );
+    // By this point the whole startup sequence — STT model load AND audio
+    // capture init — is confirmed complete.
     crate::hardware::telemetry::finish(
         session_start,
         crate::hardware::telemetry::PipelineStage::SttSessionStart,
-        &crate::hardware::perf_context(&app),
+        &crate::hardware::perf_context(app),
     );
-    // STT/RAG scheduling coordination (Phase B): signals RAG indexing to
-    // yield while this session runs, on Entry/Standard tier only (no-op
-    // otherwise) — see hardware::stt_rag_coordination's module doc.
-    crate::hardware::stt_rag_coordination::on_stt_session_started(&app);
 
     let app_for_pipeline = app.clone();
     let pause_for_pipeline = pause.clone();
+
+    // ===== TEMP DIAGNOSTIC INSTRUMENTATION — STT latency investigation =====
+    // Gated behind STT_DIAG=1 (OFF by default): read-only logging, changes no
+    // STT/RAG/VAD/endpointing behavior. For removal after the investigation
+    // — see docs/performance-tuning.md's real-i3-latency-diagnosis section.
+    let diag_enabled = std::env::var("STT_DIAG").map(|v| v == "1").unwrap_or(false);
+    let diag_start = std::time::Instant::now();
+    if diag_enabled {
+        let diag_stop = stop.clone();
+        let diag_app = app.clone();
+        std::thread::Builder::new()
+            .name("diag-resource-sampler".into())
+            .spawn(move || {
+                let mut sys = sysinfo::System::new_all();
+                while !diag_stop.is_stopped() {
+                    std::thread::sleep(std::time::Duration::from_millis(1000));
+                    sys.refresh_cpu_usage();
+                    let cpu = sys.global_cpu_usage();
+                    let avail = crate::hardware::available_ram_mb();
+                    let cfg = crate::hardware::effective_config_checked(&diag_app);
+                    let pressure = crate::hardware::perf_context(&diag_app).pressure;
+                    log::info!(
+                        "DIAG t={}ms cpu={:.1}% avail_ram_mb={} stt_threads={} pressure={:?}",
+                        diag_start.elapsed().as_millis(),
+                        cpu,
+                        avail,
+                        cfg.stt_num_threads,
+                        pressure,
+                    );
+                }
+            })
+            .ok();
+    }
+    // ===== END TEMP DIAGNOSTIC (resource sampler) =====
 
     let pipeline_thread = std::thread::Builder::new()
         .name("audio-stt-pipeline".into())
@@ -104,6 +293,19 @@ pub fn start_system_audio_capture(
                     let mut first_final_logged = false;
 
                     for event in stt_rx.iter() {
+                        // ===== TEMP DIAGNOSTIC: every partial/final, not just
+                        // the first — text length only, never content, per
+                        // telemetry.rs's existing no-content-logging rule.
+                        if diag_enabled {
+                            log::info!(
+                                "DIAG t={}ms stt_event kind={:?} text_len={}",
+                                diag_start.elapsed().as_millis(),
+                                event.kind,
+                                event.text.len(),
+                            );
+                        }
+                        // ===== END TEMP DIAGNOSTIC =====
+
                         if !first_partial_logged && event.kind == crate::stt::SttEventKind::Partial {
                             first_partial_logged = true;
                             crate::hardware::telemetry::log_stage_ms(
@@ -134,9 +336,18 @@ pub fn start_system_audio_capture(
                 })
                 .ok();
 
+            // ===== TEMP DIAGNOSTIC: RMS-threshold speech onset/offset
+            // detector, purely observational (does NOT feed VAD/endpointing
+            // — those stay untouched in Python), plus outbound channel
+            // backlog at each transition, to see whether audio is queuing up
+            // behind STT rather than being delivered promptly.
+            let diag_audio_tx = audio_tx_for_diag.clone();
+            let mut diag_speaking = false;
+            // ===== END TEMP DIAGNOSTIC (setup) =====
+
             // The loop itself lives in `audio::pipeline` so that the headless
             // `pipeline_test` binary drives the same code rather than a copy.
-            crate::audio::run_stt_pipeline(audio_rx, sidecar, pause_for_pipeline, |chunk| {
+            crate::audio::run_stt_pipeline(audio_rx, sidecar, pause_for_pipeline, move |chunk| {
                 let _ = app_for_pipeline.emit(
                     "audio:level",
                     AudioLevelEvent {
@@ -144,6 +355,29 @@ pub fn start_system_audio_capture(
                         rms_level: chunk.rms_level,
                     },
                 );
+                // ===== TEMP DIAGNOSTIC =====
+                if diag_enabled {
+                    const SPEECH_RMS_THRESHOLD: f32 = 0.02;
+                    let is_speech = chunk.rms_level > SPEECH_RMS_THRESHOLD;
+                    if is_speech && !diag_speaking {
+                        diag_speaking = true;
+                        log::info!(
+                            "DIAG t={}ms speech_onset rms={:.4} backlog={}",
+                            diag_start.elapsed().as_millis(),
+                            chunk.rms_level,
+                            diag_audio_tx.len(),
+                        );
+                    } else if !is_speech && diag_speaking {
+                        diag_speaking = false;
+                        log::info!(
+                            "DIAG t={}ms speech_offset rms={:.4} backlog={}",
+                            diag_start.elapsed().as_millis(),
+                            chunk.rms_level,
+                            diag_audio_tx.len(),
+                        );
+                    }
+                }
+                // ===== END TEMP DIAGNOSTIC =====
             });
 
             if let Some(handle) = events_thread {
@@ -152,20 +386,11 @@ pub fn start_system_audio_capture(
         })
         .map_err(|e| e.to_string())?;
 
+    let mut session = state.capture.lock().map_err(|e| e.to_string())?;
     session.stop_signal = Some(stop);
     session.pause_signal = Some(pause);
     session.system_audio_thread = Some(audio_thread);
     session.pipeline_thread = Some(pipeline_thread);
-    session.recording_state = RecordingState::Recording;
-
-    let _ = app.emit(
-        "recording:state",
-        RecordingStateEvent {
-            state: RecordingState::Recording,
-        },
-    );
-    log::info!("start_system_audio_capture: recording started");
-
     Ok(())
 }
 
@@ -248,10 +473,14 @@ pub fn stop_audio_capture(app: tauri::AppHandle, state: State<'_, AppState>) -> 
     // joining can block for as long as the STT sidecar takes to flush and exit,
     // and holding `state.capture` for that whole span would deadlock every other
     // recording command (get_recording_state, pause/resume, a fresh start) that
-    // also needs this same mutex while Stop is still in flight.
+    // also needs this same mutex while Stop is still in flight. The
+    // `Stopping` state set here (rather than jumping straight to `Stopped`)
+    // is what a concurrent Start request sees and waits on instead of
+    // racing a new WASAPI/STT session against this teardown's still-live
+    // device/process handles — see `start_system_audio_capture`.
     let (pause_signal, stop_signal, system_audio_thread, mic_thread, pipeline_thread) = {
         let mut session = state.capture.lock().map_err(|e| e.to_string())?;
-        session.recording_state = RecordingState::Stopped;
+        session.recording_state = RecordingState::Stopping;
         (
             session.pause_signal.take(),
             session.stop_signal.take(),
@@ -260,6 +489,7 @@ pub fn stop_audio_capture(app: tauri::AppHandle, state: State<'_, AppState>) -> 
             session.pipeline_thread.take(),
         )
     };
+    let _ = app.emit("recording:state", RecordingStateEvent { state: RecordingState::Stopping });
 
     if let Some(pause) = pause_signal {
         // Make sure a paused pipeline thread doesn't sit forever skipping chunks;
@@ -283,6 +513,11 @@ pub fn stop_audio_capture(app: tauri::AppHandle, state: State<'_, AppState>) -> 
     {
         let mut transcript = state.transcript.lock().map_err(|e| e.to_string())?;
         transcript.mark_stopped();
+    }
+
+    {
+        let mut session = state.capture.lock().map_err(|e| e.to_string())?;
+        session.recording_state = RecordingState::Stopped;
     }
 
     // STT/RAG scheduling coordination (Phase B): releases the throttle this
@@ -320,7 +555,7 @@ pub fn start_new_interview(state: State<'_, AppState>) -> Result<(), String> {
     let mut session = state.capture.lock().map_err(|e| e.to_string())?;
     if matches!(
         session.recording_state,
-        RecordingState::Recording | RecordingState::Paused
+        RecordingState::Recording | RecordingState::Paused | RecordingState::Starting | RecordingState::Stopping
     ) {
         return Err("stop the current recording before starting a new interview".into());
     }

@@ -8,6 +8,7 @@
 //! hardware-tiered (see `manager.rs`'s module doc on LLM context).
 
 pub mod commands;
+pub mod fingerprint;
 pub mod gpu;
 pub mod manager;
 pub mod pressure;
@@ -35,9 +36,20 @@ pub struct PerformanceState(pub Mutex<PerformanceManager>);
 /// from `lib.rs`'s `.setup()`, since loading the persisted mode needs an
 /// `AppHandle` (to resolve the app data directory) that isn't available at
 /// `.manage()` time.
+///
+/// The hardware profile itself is always freshly detected (never cached
+/// across launches — see `profile::detect`'s doc). What CAN otherwise go
+/// stale is the persisted *mode* preference: an explicit `MaximumPerformance`/
+/// `BatterySaver` choice is only trustworthy on the machine it was chosen
+/// on, so it's tagged with a hardware fingerprint (`fingerprint::compute`)
+/// and `store::load` resets it back to `Adaptive` if this launch's
+/// fingerprint doesn't match — see `store.rs`'s module doc for the full
+/// reconciliation rules (same machine / different machine / missing
+/// fingerprint migration / corrupted file).
 pub fn init(app: &AppHandle) -> PerformanceState {
     let profile = profile::detect();
-    let mode = store::load_mode(app);
+    let current_fingerprint = fingerprint::compute(&profile);
+    let loaded = store::load(app, &current_fingerprint);
     log::info!(
         "hardware profile: {} logical cores, {}MB RAM, gpu={:?}, ssd={:?}",
         profile.cpu_logical_cores,
@@ -45,7 +57,15 @@ pub fn init(app: &AppHandle) -> PerformanceState {
         profile.gpu_name,
         profile.storage_is_ssd
     );
-    let manager = PerformanceManager::new(profile, mode);
+    if loaded.hardware_changed {
+        log::info!(
+            "hardware fingerprint changed since performance.json was last written — \
+             this looks like a different physical machine; resetting performance mode \
+             to Adaptive rather than reusing an override chosen on other hardware"
+        );
+    }
+    let mut manager = PerformanceManager::new(profile, loaded.mode);
+    manager.set_hardware_refreshed(loaded.hardware_changed);
     log::info!("performance mode: {:?}, detected tier: {:?}", manager.mode(), manager.detected_tier());
     PerformanceState(Mutex::new(manager))
 }

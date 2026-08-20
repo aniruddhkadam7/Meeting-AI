@@ -38,16 +38,19 @@ fn main() {
     println!("lifecycle: {}", if lifecycle { "Start/Pause/Resume/Stop" } else { "Start/Stop only" });
     println!("Play audio through your speakers now.\n");
 
+    let (audio_tx, audio_rx) = crossbeam_channel::unbounded();
     let (stt_tx, stt_rx) = std::sync::mpsc::channel();
     let stop = StopSignal::new();
     let pause = PauseSignal::new();
 
-    // Sidecar first, audio capture second — mirrors commands.rs's
-    // `start_capture_inner` order. Starting capture before the sidecar is
-    // ready lets WASAPI fill the (unbounded) audio channel with nobody
-    // consuming it for the whole model-load window; see
-    // docs/performance-tuning.md's real-i3-latency-diagnosis section.
-    //
+    let audio_thread = match SystemAudioCapture::start(audio_tx, stop.clone()) {
+        Ok(handle) => handle,
+        Err(err) => {
+            eprintln!("capture failed: {err}");
+            std::process::exit(1);
+        }
+    };
+
     // `None`: this headless binary has no `PerformanceManager`/`AppHandle` —
     // preserves the pre-existing STT_NUM_THREADS env-var pass-through
     // behavior unchanged, same as before this parameter existed.
@@ -55,15 +58,6 @@ fn main() {
         Ok(sidecar) => sidecar,
         Err(err) => {
             eprintln!("sidecar failed: {err}");
-            std::process::exit(1);
-        }
-    };
-
-    let (audio_tx, audio_rx) = crossbeam_channel::unbounded();
-    let audio_thread = match SystemAudioCapture::start(audio_tx, stop.clone()) {
-        Ok(handle) => handle,
-        Err(err) => {
-            eprintln!("capture failed: {err}");
             std::process::exit(1);
         }
     };

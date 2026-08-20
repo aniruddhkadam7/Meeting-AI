@@ -32,6 +32,7 @@ interface PerformanceModeInfo {
   mode: PerformanceMode;
   detectedTier: HardwareTier;
   effectiveConfig: PerformanceConfig;
+  hardwareRefreshed: boolean;
 }
 
 const TIER_LABELS: Record<HardwareTier, string> = {
@@ -82,7 +83,7 @@ export function PerformancePanel({ onClose }: { onClose: () => void }) {
   const [modeInfo, setModeInfo] = useState<PerformanceModeInfo | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(true);
 
   useEffect(() => {
     invoke<HardwareProfile>("get_hardware_profile").then(setProfile).catch((err) => setError(String(err)));
@@ -131,7 +132,14 @@ export function PerformancePanel({ onClose }: { onClose: () => void }) {
 
           {modeInfo && (
             <p className="setup-hint">
-              Your hardware: <strong>{TIER_LABELS[modeInfo.detectedTier]}</strong>
+              Hardware tier: <strong>{TIER_LABELS[modeInfo.detectedTier]}</strong>
+            </p>
+          )}
+
+          {modeInfo?.hardwareRefreshed && (
+            <p className="setup-hint">
+              Hardware profile refreshed because this looks like different hardware than last time —
+              performance mode was reset to Adaptive.
             </p>
           )}
 
@@ -147,13 +155,20 @@ export function PerformancePanel({ onClose }: { onClose: () => void }) {
               </button>
             ))}
           </div>
-          {modeInfo && (
+          {busy && (
+            <p className="setup-hint">Applying — this restarts the local document search service and can take up to a minute...</p>
+          )}
+          {!busy && modeInfo && (
             <p className="setup-hint">{MODE_OPTIONS.find((o) => o.value === modeInfo.mode)?.description}</p>
           )}
 
           {modeInfo && (
             <>
-              <button className="link-button" onClick={() => setShowAdvanced((v) => !v)}>
+              <button
+                className="link-button"
+                style={{ color: "var(--text-muted)" }}
+                onClick={() => setShowAdvanced((v) => !v)}
+              >
                 {showAdvanced ? "Hide" : "Show"} advanced details
               </button>
               {showAdvanced && (

@@ -25,8 +25,20 @@ pub struct TranscriptSegment {
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RecordingState {
     Idle,
+    /// Start requested: audio capture is being initialized and/or the STT
+    /// sidecar is starting and has not yet signaled ready. A second Start
+    /// request seen in this state is rejected as a duplicate (see
+    /// `commands::start_system_audio_capture`) — real audio/transcript
+    /// flow has not begun yet, so the UI must not treat this as Recording.
+    Starting,
     Recording,
     Paused,
+    /// Stop requested: capture/sidecar teardown is in progress (threads
+    /// being joined, sidecar process being flushed and shut down). A Start
+    /// request seen in this state waits briefly for teardown to finish
+    /// rather than racing a new session against the old one's still-live
+    /// process/device handles (see `commands::start_system_audio_capture`).
+    Stopping,
     Stopped,
 }
 

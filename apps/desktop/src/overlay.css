@@ -96,6 +96,16 @@ body.overlay-window #root {
   animation: overlay-pulse 1s ease-in-out infinite;
 }
 
+/* Rare now that Start Interview waits for capture to be confirmed ready
+   before this window ever opens (see InterviewSetup.tsx's prewarm), but
+   still reachable as a brief transitional state — styled rather than left
+   blank so it never reads as a rendering glitch. */
+.overlay-rec-dot.starting {
+  background: #fbbf24;
+  box-shadow: 0 0 8px rgba(251, 191, 36, 0.8);
+  animation: overlay-pulse 1s ease-in-out infinite;
+}
+
 @keyframes overlay-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
