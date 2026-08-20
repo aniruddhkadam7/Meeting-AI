@@ -1,9 +1,9 @@
-//! Adaptive hardware-based performance tuning for WhitedotAI's local STT and RAG
+//! Adaptive hardware-based performance tuning for Smallbird's local STT and RAG
 //! pipelines. See docs/performance-tuning.md (once Milestone 7 lands) for
 //! the benchmark evidence behind the tier→config table in `manager.rs`.
 //!
 //! Scope: STT (sherpa-onnx sidecar thread count) and RAG (embedding
-//! batch/thread count, retrieval top_k/context/timeout) only. WhitedotAI's LLM
+//! batch/thread count, retrieval top_k/context/timeout) only. Smallbird's LLM
 //! is a cloud API call via `apps/backend` — not touched here, and never
 //! hardware-tiered (see `manager.rs`'s module doc on LLM context).
 
@@ -24,13 +24,16 @@ use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
 
 use manager::PerformanceManager;
+use profile::CpuUsageSampler;
 
 /// Tauri-managed state wrapping the single `PerformanceManager` instance —
 /// registered directly via `.manage(...)`, following the same top-level
 /// state pattern as `NotesStore`/`AgentStore`, rather than nesting inside
 /// `AppState`. `Mutex`-wrapped because Tauri commands run on arbitrary
-/// threads.
-pub struct PerformanceState(pub Mutex<PerformanceManager>);
+/// threads. `cpu_sampler` lives alongside the manager rather than inside
+/// its `Mutex` — it only ever needs a non-blocking atomic read (see
+/// `CpuUsageSampler::latest_percent`), so it doesn't need the same lock.
+pub struct PerformanceState(pub Mutex<PerformanceManager>, pub CpuUsageSampler);
 
 /// Detects hardware and loads the persisted mode preference. Called once
 /// from `lib.rs`'s `.setup()`, since loading the persisted mode needs an
@@ -67,7 +70,7 @@ pub fn init(app: &AppHandle) -> PerformanceState {
     let mut manager = PerformanceManager::new(profile, loaded.mode);
     manager.set_hardware_refreshed(loaded.hardware_changed);
     log::info!("performance mode: {:?}, detected tier: {:?}", manager.mode(), manager.detected_tier());
-    PerformanceState(Mutex::new(manager))
+    PerformanceState(Mutex::new(manager), CpuUsageSampler::start())
 }
 
 /// Convenience for spawn-time call sites (Milestones 4b/5) that just need
@@ -80,17 +83,24 @@ pub fn effective_config(app: &AppHandle) -> manager::PerformanceConfig {
     manager.effective_config()
 }
 
-/// Milestone 6 checkpoint: feeds a freshly-measured available-RAM reading
-/// into the sustained-pressure tracker and returns the (possibly clamped)
-/// config to use, plus a log-worthy reason if the pressure state changed on
-/// this call. Callers should measure RAM immediately before calling this
-/// (see `profile::available_ram_mb`) — the natural checkpoints are STT
-/// sidecar spawn and RAG document-upload/indexing start, not a timer.
+/// Milestone 6 checkpoint (extended to also cover CPU pressure, not just
+/// RAM): feeds a freshly-measured available-RAM reading, plus the CPU
+/// sampler's latest published reading, into the sustained-pressure tracker
+/// and returns the (possibly clamped) config to use, plus a log-worthy
+/// reason if the pressure state changed on this call. Callers should
+/// measure RAM immediately before calling this (see
+/// `profile::available_ram_mb`) — the natural checkpoints are STT sidecar
+/// spawn and RAG document-upload/indexing start, not a timer. The CPU
+/// reading is never measured inline here (that would block this checkpoint
+/// for ~200ms — see `profile::CpuUsageSampler`'s doc); it's whatever the
+/// background sampler thread most recently published, read without
+/// blocking.
 pub fn effective_config_checked(app: &AppHandle) -> manager::PerformanceConfig {
     let available = profile::available_ram_mb();
     let state = app.state::<PerformanceState>();
+    let cpu_percent = state.1.latest_percent();
     let mut manager = state.0.lock().unwrap();
-    let (config, reason) = manager.effective_config_checked(available);
+    let (config, reason) = manager.effective_config_checked(available, cpu_percent);
     if let Some(reason) = reason {
         log::warn!("performance: {reason}");
     }

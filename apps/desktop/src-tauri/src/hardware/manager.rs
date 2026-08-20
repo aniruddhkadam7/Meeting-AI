@@ -286,7 +286,9 @@ impl PerformanceManager {
     }
 
     /// Same as `effective_config()`, but first feeds a freshly-measured
-    /// available-RAM reading into the sustained-pressure tracker and, if
+    /// available-RAM reading, plus the latest published CPU-utilization
+    /// reading (see `profile::CpuUsageSampler`; `None` if no sample has
+    /// published yet), into the sustained-pressure tracker and, if
     /// currently under pressure, clamps STT threads / RAG retrieval budget
     /// down accordingly (never touching RAG's embed batch size / torch
     /// thread count — see `pressure`'s module doc for why). Call sites that
@@ -301,8 +303,12 @@ impl PerformanceManager {
     /// `commands.rs`/`notes_mode/dictation.rs`/`retrieval_planner` call
     /// sites), since an automatic downgrade or restoration should always be
     /// visible in the logs, not silent.
-    pub fn effective_config_checked(&mut self, available_ram_mb: u64) -> (PerformanceConfig, Option<String>) {
-        let reason = self.pressure.observe(available_ram_mb, std::time::Instant::now());
+    pub fn effective_config_checked(
+        &mut self,
+        available_ram_mb: u64,
+        cpu_usage_percent: Option<f32>,
+    ) -> (PerformanceConfig, Option<String>) {
+        let reason = self.pressure.observe(available_ram_mb, cpu_usage_percent, std::time::Instant::now());
         let config = self.pressure.apply(self.effective_config());
         (config, reason)
     }
@@ -522,7 +528,7 @@ mod tests {
     #[test]
     fn effective_config_checked_matches_plain_effective_config_when_ram_is_healthy() {
         let mut manager = PerformanceManager::new(profile_with(16, 16), PerformanceMode::Adaptive);
-        let (checked, reason) = manager.effective_config_checked(8_000);
+        let (checked, reason) = manager.effective_config_checked(8_000, None);
         assert!(reason.is_none());
         assert_eq!(checked.stt_num_threads, manager.effective_config().stt_num_threads);
     }
@@ -533,10 +539,10 @@ mod tests {
         let baseline = manager.effective_config();
         assert_eq!(baseline.stt_num_threads, 4); // HighPerformance row
 
-        let (_, reason1) = manager.effective_config_checked(500);
+        let (_, reason1) = manager.effective_config_checked(500, None);
         assert!(reason1.is_none()); // first low reading — not sustained yet
 
-        let (checked, reason2) = manager.effective_config_checked(500);
+        let (checked, reason2) = manager.effective_config_checked(500, None);
         assert!(reason2.is_some(), "second consecutive low reading should trigger pressure");
         assert_eq!(checked.stt_num_threads, 1); // clamped to Entry's value
     }
@@ -546,11 +552,38 @@ mod tests {
         let mut manager = PerformanceManager::new(profile_with(16, 16), PerformanceMode::Adaptive);
         let baseline = manager.effective_config();
 
-        manager.effective_config_checked(500);
-        let (checked, _) = manager.effective_config_checked(500);
+        manager.effective_config_checked(500, None);
+        let (checked, _) = manager.effective_config_checked(500, None);
 
         assert_eq!(checked.rag_embed_batch_size, baseline.rag_embed_batch_size);
         assert_eq!(checked.rag_torch_threads, baseline.rag_torch_threads);
+    }
+
+    #[test]
+    fn effective_config_checked_clamps_down_after_sustained_high_cpu_even_with_healthy_ram() {
+        let mut manager = PerformanceManager::new(profile_with(16, 16), PerformanceMode::Adaptive);
+        let baseline = manager.effective_config();
+        assert_eq!(baseline.stt_num_threads, 4); // HighPerformance row
+
+        let (_, reason1) = manager.effective_config_checked(8_000, Some(96.0));
+        assert!(reason1.is_none()); // first high-CPU reading — not sustained yet
+
+        let (checked, reason2) = manager.effective_config_checked(8_000, Some(96.0));
+        assert!(reason2.is_some(), "second consecutive high-CPU reading should trigger pressure");
+        assert_eq!(checked.stt_num_threads, 1); // clamped to Entry's value, same ceiling as RAM pressure
+    }
+
+    #[test]
+    fn effective_config_checked_with_no_cpu_reading_behaves_exactly_like_ram_only_pressure() {
+        // Mirrors the pre-CPU-pressure behavior exactly when the sampler
+        // hasn't published a reading yet — a regression guard that adding
+        // CPU pressure didn't change existing RAM-only call sites'
+        // behavior when they simply don't have a CPU reading available.
+        let mut manager = PerformanceManager::new(profile_with(16, 16), PerformanceMode::Adaptive);
+        manager.effective_config_checked(500, None);
+        let (checked, reason) = manager.effective_config_checked(500, None);
+        assert!(reason.is_some());
+        assert_eq!(checked.stt_num_threads, 1);
     }
 
     // -- should_throttle_background_work: STT/RAG scheduling (Phase B) ------

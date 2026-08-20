@@ -18,7 +18,7 @@ use windows::Win32::System::Ioctl::{
 };
 use windows::Win32::System::IO::DeviceIoControl;
 
-/// Queries the physical drive backing `C:\` (WhitedotAI's app data / model /
+/// Queries the physical drive backing `C:\` (Smallbird's app data / model /
 /// working files all live under the system drive in practice). Returns
 /// `None` on any failure — permission denial, an unusual storage stack
 /// (e.g. some virtualized/cloud-mounted drives), or an unsupported query —

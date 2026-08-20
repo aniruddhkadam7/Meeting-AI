@@ -39,7 +39,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("rag")
 
-app = FastAPI(title="WhitedotAI Local RAG Service", version="0.1.0")
+app = FastAPI(title="Smallbird Local RAG Service", version="0.1.0")
 
 # Same reasoning as apps/backend: an explicit allowlist, never "*", even though
 # this service only ever binds to localhost.

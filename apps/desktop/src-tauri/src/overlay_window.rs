@@ -8,7 +8,7 @@
 //! parameterized by label for the two new live-call modes.
 
 use tauri::{
-    window::Color, AppHandle, LogicalPosition, LogicalSize, Manager, WebviewUrl, WebviewWindow,
+    window::Color, AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, WebviewUrl, WebviewWindow,
     WebviewWindowBuilder,
 };
 
@@ -58,6 +58,14 @@ pub fn show_overlay_window(app: &AppHandle, label: &str, title: &str) -> Result<
     Ok(OverlayCaptureStatus { excluded })
 }
 
+/// Also emits `interview-mode:overlay-closed` to every window — see the doc
+/// comment on `interview_mode::window::close_overlay_window` for why: the
+/// overlay and main window are separate webviews with no shared React
+/// state, so the main window's own session status has no other way to learn
+/// the overlay closed unless it was the one that called this. Reusing the
+/// same event name (rather than a Sales/Consulting/Meeting-specific one)
+/// keeps the main window's listener a single one covering every mode, since
+/// it only ever has one active overlay/session at a time regardless of mode.
 pub fn close_overlay_window(app: &AppHandle, label: &str) -> Result<(), String> {
     if let Some(window) = app.get_webview_window(label) {
         window.hide().map_err(|e| e.to_string())?;
@@ -66,6 +74,7 @@ pub fn close_overlay_window(app: &AppHandle, label: &str) -> Result<(), String> 
         main.show().map_err(|e| e.to_string())?;
         main.set_focus().map_err(|e| e.to_string())?;
     }
+    let _ = app.emit("interview-mode:overlay-closed", ());
     Ok(())
 }
 

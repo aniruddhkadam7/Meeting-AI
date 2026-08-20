@@ -1,6 +1,6 @@
 # RAG benchmark
 
-Standalone harness for sweeping WhitedotAI's local RAG embedding/index/search
+Standalone harness for sweeping Smallbird's local RAG embedding/index/search
 pipeline across torch thread counts and encode batch sizes. Isolated from
 `packages/rag` the same way `packages/stt-bench` is isolated from
 `apps/desktop` — it imports `packages/rag`'s real `app.embeddings` /

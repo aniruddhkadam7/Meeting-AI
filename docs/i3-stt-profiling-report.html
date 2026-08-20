@@ -431,7 +431,7 @@
 <main>
   <header class="title-block">
     <div class="eyebrow">STT Performance · Profiling Phase · No code shipped</div>
-    <h1>Where WhitedotAI's transcription latency actually comes from on an i3</h1>
+    <h1>Where Smallbird's transcription latency actually comes from on an i3</h1>
     <p class="subtitle">Nine pipeline stages, profiled and benchmarked with the existing <code>stt-bench</code> harness. One stage explains nearly all of the 350–500&nbsp;ms budget. Threads are not it.</p>
     <div class="meta-row">
       <span><strong>Reference machine</strong> i5-13400, 10c/16t, 16GB</span>
@@ -509,7 +509,7 @@
     </div>
 
     <h3>5 · STT chunk formation</h3>
-    <p>No app-level chunking layer exists — whatever WASAPI hands over per packet goes straight to <code>sidecar.send_samples()</code>. The sherpa-onnx streaming model has its own internal frame/chunk semantics (80&nbsp;ms lookahead, baked into the exported model); WhitedotAI doesn't batch multiple WASAPI packets before sending. This is priority item <strong>C</strong>'s actual target — but chunk size here means "how often do we call into the decoder," which is downstream of finding D.</p>
+    <p>No app-level chunking layer exists — whatever WASAPI hands over per packet goes straight to <code>sidecar.send_samples()</code>. The sherpa-onnx streaming model has its own internal frame/chunk semantics (80&nbsp;ms lookahead, baked into the exported model); Smallbird doesn't batch multiple WASAPI packets before sending. This is priority item <strong>C</strong>'s actual target — but chunk size here means "how often do we call into the decoder," which is downstream of finding D.</p>
 
     <h3>6 · Model inference — <strong>where the time actually goes</strong></h3>
     <div class="callout finding">
@@ -586,7 +586,7 @@ t=600ms  affinity=65535     ← stayed reverted for the rest of the run</code></
       </div>
       <div class="priority-item">
         <div class="letter">C</div>
-        <div class="body"><h4>Optimize chunk size</h4><p>The model's chunk size (80&nbsp;ms) is baked into the exported ONNX graph — not a runtime parameter. The only "chunk size" WhitedotAI controls is how often WASAPI packets are forwarded, which is already immediate (no app-level batching delay exists to remove).</p></div>
+        <div class="body"><h4>Optimize chunk size</h4><p>The model's chunk size (80&nbsp;ms) is baked into the exported ONNX graph — not a runtime parameter. The only "chunk size" Smallbird controls is how often WASAPI packets are forwarded, which is already immediate (no app-level batching delay exists to remove).</p></div>
         <div class="verdict-pill reject">No app-level lever exists</div>
       </div>
       <div class="priority-item">

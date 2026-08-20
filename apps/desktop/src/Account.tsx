@@ -11,7 +11,7 @@ type SignUpResult =
   | { status: "signedIn"; session: SessionInfo }
   | { status: "confirmationRequired" };
 
-/// WhitedotAI Cloud account panel: sign in/up against Supabase Auth (via the Rust
+/// Smallbird Cloud account panel: sign in/up against Supabase Auth (via the Rust
 /// `auth` module), or sign out. Cloud sync is entirely opt-in — everything
 /// else in the app works fully offline with no account at all, so this is
 /// deliberately just a small settings-style panel, not a gate the user has
@@ -83,21 +83,24 @@ export function Account({ onClose }: { onClose: () => void }) {
   }, []);
 
   return (
-    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
-      <div className="modal-panel" role="dialog" aria-modal="true" aria-label="Account">
-        <header className="modal-header">
-          <h1 className="setup-title">Account</h1>
+    <div
+      className="popover-overlay"
+      onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}
+    >
+      <div className="popover" role="dialog" aria-modal="true" aria-label="Account">
+        <div className="popover-header">
+          <span className="setup-section-label">Account</span>
           <button className="modal-close-btn" onClick={onClose} title="Close" aria-label="Close">
             ✕
           </button>
-        </header>
+        </div>
 
-        <div className="modal-body">
+        <div className="popover-body">
           {cloudConfigured === false && (
             <p className="setup-hint">
-              WhitedotAI Cloud isn't configured on this build. Custom Agents and everything else keep
+              Smallbird Cloud isn't configured on this build. Custom Agents and everything else keep
               working fully offline; sign-in and cloud sync will appear once this build is connected
-              to WhitedotAI Cloud.
+              to Smallbird Cloud.
             </p>
           )}
 
@@ -107,7 +110,7 @@ export function Account({ onClose }: { onClose: () => void }) {
                 Signed in as <strong>{session.email ?? session.userId}</strong>
               </p>
               <p className="setup-hint">
-                Your Custom Agents sync to WhitedotAI Cloud so they survive a reinstall. Everything else
+                Your Custom Agents sync to Smallbird Cloud so they survive a reinstall. Everything else
                 (transcripts, recordings) stays local on this device.
               </p>
               {syncStatus && <p className="setup-hint">{syncStatus}</p>}
@@ -165,36 +168,36 @@ export function Account({ onClose }: { onClose: () => void }) {
                 />
               </div>
               {error && <p className="error">{error}</p>}
-              <p className="setup-hint">Signing in is optional — WhitedotAI works fully offline without an account.</p>
+              <p className="setup-hint">Signing in is optional — Smallbird works fully offline without an account.</p>
             </>
           )}
-        </div>
 
-        <footer className="modal-footer">
-          {cloudConfigured && session ? (
-            <>
-              <Button variant="ghost" onClick={handleSignOut} disabled={busy}>
-                Sign out
+          <div className="popover-footer">
+            {cloudConfigured && session ? (
+              <>
+                <Button variant="ghost" onClick={handleSignOut} disabled={busy}>
+                  Sign out
+                </Button>
+                <Button variant="secondary" onClick={runSync} disabled={busy}>
+                  Sync now
+                </Button>
+              </>
+            ) : cloudConfigured ? (
+              <>
+                <Button variant="ghost" onClick={onClose} disabled={busy}>
+                  Cancel
+                </Button>
+                <Button variant="primary" onClick={handleSubmit} disabled={busy || !email || !password}>
+                  {busy ? "Working…" : mode === "SIGN_IN" ? "Sign in" : "Create account"}
+                </Button>
+              </>
+            ) : (
+              <Button variant="ghost" onClick={onClose}>
+                Close
               </Button>
-              <Button variant="secondary" onClick={runSync} disabled={busy}>
-                Sync now
-              </Button>
-            </>
-          ) : cloudConfigured ? (
-            <>
-              <Button variant="ghost" onClick={onClose} disabled={busy}>
-                Cancel
-              </Button>
-              <Button variant="primary" onClick={handleSubmit} disabled={busy || !email || !password}>
-                {busy ? "Working…" : mode === "SIGN_IN" ? "Sign in" : "Create account"}
-              </Button>
-            </>
-          ) : (
-            <Button variant="ghost" onClick={onClose}>
-              Close
-            </Button>
-          )}
-        </footer>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

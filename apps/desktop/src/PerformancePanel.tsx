@@ -33,6 +33,7 @@ interface PerformanceModeInfo {
   detectedTier: HardwareTier;
   effectiveConfig: PerformanceConfig;
   hardwareRefreshed: boolean;
+  isBelowRecommended: boolean;
 }
 
 const TIER_LABELS: Record<HardwareTier, string> = {
@@ -62,7 +63,7 @@ const MODE_OPTIONS: { value: PerformanceMode; label: string; description: string
 
 function formatGpu(profile: HardwareProfile): string {
   if (!profile.gpuName) {
-    return "No dedicated graphics card detected — that's fine, WhitedotAI doesn't require one.";
+    return "No dedicated graphics card detected — that's fine, Smallbird doesn't require one.";
   }
   const vram = profile.gpuVramMb ? `, ${Math.round(profile.gpuVramMb / 1024)}GB` : "";
   return `${profile.gpuName}${vram}`;
@@ -73,7 +74,7 @@ function formatStorage(profile: HardwareProfile): string | null {
   return profile.storageIsSsd ? "SSD" : "HDD";
 }
 
-/// WhitedotAI Performance panel: shows the machine's detected hardware and lets
+/// Smallbird Performance panel: shows the machine's detected hardware and lets
 /// the user pick Adaptive (default)/Maximum Performance/Battery Saver.
 /// Mirrors Account.tsx's modal shell/state conventions — local useState
 /// only, typed invoke<T> calls, busy/error handling around the one write
@@ -105,16 +106,19 @@ export function PerformancePanel({ onClose }: { onClose: () => void }) {
   }, []);
 
   return (
-    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
-      <div className="modal-panel" role="dialog" aria-modal="true" aria-label="WhitedotAI Performance">
-        <header className="modal-header">
-          <h1 className="setup-title">WhitedotAI Performance</h1>
+    <div
+      className="popover-overlay"
+      onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}
+    >
+      <div className="popover" role="dialog" aria-modal="true" aria-label="Smallbird Performance">
+        <div className="popover-header">
+          <span className="setup-section-label">Smallbird Performance</span>
           <button className="modal-close-btn" onClick={onClose} title="Close" aria-label="Close">
             ✕
           </button>
-        </header>
+        </div>
 
-        <div className="modal-body">
+        <div className="popover-body">
           {error && <p className="error">{error}</p>}
 
           {profile && (
@@ -140,6 +144,13 @@ export function PerformancePanel({ onClose }: { onClose: () => void }) {
             <p className="setup-hint">
               Hardware profile refreshed because this looks like different hardware than last time —
               performance mode was reset to Adaptive.
+            </p>
+          )}
+
+          {modeInfo?.isBelowRecommended && (
+            <p className="setup-hint">
+              Your PC can run Smallbird, but your hardware is below our recommended configuration. Real-time
+              transcription may be slower.
             </p>
           )}
 
@@ -181,13 +192,13 @@ export function PerformancePanel({ onClose }: { onClose: () => void }) {
               )}
             </>
           )}
-        </div>
 
-        <footer className="modal-footer">
-          <Button variant="ghost" onClick={onClose} disabled={busy}>
-            Close
-          </Button>
-        </footer>
+          <div className="popover-footer">
+            <Button variant="ghost" onClick={onClose} disabled={busy}>
+              Close
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
   );

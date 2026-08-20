@@ -9,7 +9,7 @@
 use tauri::{AppHandle, Emitter, State};
 
 use crate::backend::{AskRequest, AskRetrievedChunk, BackendClient, ConversationTurn};
-use crate::rag::RetrievalPlanner;
+use crate::rag::{RagClient, RetrievalPlanner};
 use crate::state::AppState;
 
 use super::window::{self, OverlayCaptureStatus};
@@ -138,6 +138,26 @@ where
     .map_err(|e| format!("main-thread task panicked: {e}"))?
 }
 
+/// Fetches the full extracted text of the most recently uploaded document of
+/// `document_type` (RESUME or JOB_DESCRIPTION), bypassing RAG chunk search
+/// entirely. CV and job description are short enough to just read in full —
+/// unlike the "Upload documents" catch-all, there is no size reason to chunk
+/// and similarity-search them, and doing so only adds a race (the document
+/// may not have finished indexing yet) and a chance of missing/skipping
+/// content that full-text inclusion can't have. Returns `None` on any
+/// failure (RAG unavailable, no matching document, still extracting) —
+/// exactly like `retrieval_could_help`'s failures, this must never fail the
+/// ask itself, only mean the answer proceeds without that document.
+async fn fetch_document_full_text(document_type: &str) -> Option<String> {
+    let client = RagClient::new();
+    let documents = client.list_documents(None).await.ok()?;
+    let latest = documents
+        .into_iter()
+        .filter(|d| d.document_type == document_type && d.status == "READY")
+        .max_by(|a, b| a.updated_at.total_cmp(&b.updated_at))?;
+    client.get_document_text(&latest.document_id).await.ok().flatten()
+}
+
 /// Runs the ASK AI flow for a single question:
 ///
 ///     question -> (retrieval, only when it could help) -> ONE LLM call -> stream
@@ -148,6 +168,12 @@ where
 /// the user feels. When retrieval does run and returns nothing useful, the
 /// request proceeds with an empty `retrieved_context` — the backend answers
 /// from general knowledge. Retrieval failure is never an error here.
+///
+/// The uploaded CV and job description, if any, are fetched as full text
+/// (see `fetch_document_full_text`) and sent unconditionally on every
+/// question — not gated behind `retrieval_could_help`, since reading a
+/// one-page document costs nothing worth gating. `retrieved_context` (RAG)
+/// still covers the general "Upload documents" catch-all category only.
 ///
 /// Streams back as `interview-mode:answer-delta` events, finishing with
 /// `interview-mode:answer-complete`. Only ever invoked by the frontend in
@@ -172,6 +198,14 @@ pub async fn ask_interview_question(
 
     let history = trim_history(history.unwrap_or_default());
 
+    // CV and job description are fetched as full text unconditionally (see
+    // `fetch_document_full_text`), regardless of `retrieval_could_help` —
+    // unlike chunk search, reading a one-page document has no latency cost
+    // worth gating. Deferred to just before use below, after retrieval, so
+    // the (optional, possibly slower) RAG search isn't held up behind them.
+    let resume_fetch = fetch_document_full_text("RESUME");
+    let job_description_fetch = fetch_document_full_text("JOB_DESCRIPTION");
+
     let retrieved = if retrieval_could_help(trimmed) {
         // `_checked`: retrieval is asked once per question, so this is the
         // natural per-question checkpoint for the memory-pressure tracker.
@@ -191,11 +225,21 @@ pub async fn ask_interview_question(
         Vec::new()
     };
 
+    let resume_text = resume_fetch.await;
+    let uploaded_job_description = job_description_fetch.await;
+
     let request = AskRequest {
         question: trimmed.to_string(),
         conversation_history: history,
+        // RESUME/JOB_DESCRIPTION are excluded here — they're already sent in
+        // full via candidate_context/job_description below, so including
+        // RAG chunks of the same documents too would just duplicate content
+        // and risk the model treating a partial chunk as the whole picture.
+        // "Upload documents" (the general catch-all) still comes through
+        // here, since it's the case retrieval actually exists for.
         retrieved_context: retrieved
             .into_iter()
+            .filter(|r| r.metadata.document_type != "RESUME" && r.metadata.document_type != "JOB_DESCRIPTION")
             .map(|r| AskRetrievedChunk {
                 text: r.text,
                 source_filename: r.metadata.filename,
@@ -203,9 +247,13 @@ pub async fn ask_interview_question(
                 score: r.score,
             })
             .collect(),
-        candidate_context: None,
+        candidate_context: resume_text,
         role: options.role,
-        job_description: options.job_description,
+        // The uploaded document's full text (when present) is more complete
+        // than the settings panel's manually typed/pasted job_description
+        // field, so it takes priority; the typed field remains the fallback
+        // for users who never uploaded a JD file at all.
+        job_description: uploaded_job_description.or(options.job_description),
         answer_length: options.answer_length,
         response_style: options.response_style,
         english_level: options.english_level,

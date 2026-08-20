@@ -15,8 +15,8 @@ from pathlib import Path
 def _default_data_dir() -> Path:
     appdata = os.environ.get("APPDATA")
     if appdata:
-        return Path(appdata) / "WhitedotAI" / "knowledge"
-    return Path.home() / ".whitedotai" / "knowledge"
+        return Path(appdata) / "Smallbird" / "knowledge"
+    return Path.home() / ".smallbird" / "knowledge"
 
 
 class Settings:

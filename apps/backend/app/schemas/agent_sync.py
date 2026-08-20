@@ -1,4 +1,4 @@
-"""Schemas for syncing the desktop's local Agent store to WhitedotAI Cloud.
+"""Schemas for syncing the desktop's local Agent store to Smallbird Cloud.
 
 Mirrors `apps/desktop/src-tauri/src/agents/model.rs::Agent` field-for-field.
 `client_id` is that struct's own `id` (e.g. "agent-<hex>-<hex>") — the cloud

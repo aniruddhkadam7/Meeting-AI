@@ -1,7 +1,7 @@
 # Adaptive performance tuning: architecture, benchmark evidence, and end-to-end latency
 
 Status: **Complete — all 7 milestones done.** This is the final report for
-WhitedotAI's hardware-adaptive performance project. Hardware detection, the
+Smallbird's hardware-adaptive performance project. Hardware detection, the
 performance manager, memory-pressure adaptation, and end-to-end pipeline
 latency instrumentation are all implemented, tested, and verified live in
 the running application.
@@ -18,7 +18,7 @@ weaker CPU behaves." This caveat applies to every table in this document
 and is not repeated at every occurrence.
 
 Scope: STT and RAG (both genuinely local) plus the cloud LLM call's
-*latency*, measured but never tuned or hardware-tiered — WhitedotAI's LLM stays
+*latency*, measured but never tuned or hardware-tiered — Smallbird's LLM stays
 a cloud API call (OpenAI/Anthropic via `apps/backend`) throughout. No local
 LLM, no Ollama, no change to backend/LLM behavior anywhere in this project.
 
@@ -50,7 +50,7 @@ milestone's testing): STT (sherpa-onnx sidecar) and RAG (sentence-
 transformers embeddings + sqlite-vec) run entirely on the user's machine.
 The only network call in the ask-a-question pipeline is the cloud LLM
 request (`BackendClient::ask_stream` and its Sales/Consulting/Agent
-siblings) — WhitedotAI's own FastAPI backend, which in turn calls OpenAI/
+siblings) — Smallbird's own FastAPI backend, which in turn calls OpenAI/
 Anthropic. No audio, no raw transcript, and no document content is ever
 sent anywhere except that one backend call, and it receives only the
 already-retrieved text context, never raw documents.

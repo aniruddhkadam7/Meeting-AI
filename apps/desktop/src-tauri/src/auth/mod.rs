@@ -1,5 +1,5 @@
-//! WhitedotAI Cloud authentication: signs a user in directly against Supabase
-//! Auth (no WhitedotAI-run auth server), stores the resulting session in Windows
+//! Smallbird Cloud authentication: signs a user in directly against Supabase
+//! Auth (no Smallbird-run auth server), stores the resulting session in Windows
 //! Credential Manager, and exposes the current access token to other modules
 //! (agent sync, analytics) that need to call the FastAPI backend as an
 //! authenticated user.
@@ -18,7 +18,7 @@ pub use client::SupabaseAuthClient;
 pub use config::is_configured;
 use session_store::{load_session, store_session};
 
-/// Returns a still-valid access token for calling WhitedotAI Cloud, refreshing
+/// Returns a still-valid access token for calling Smallbird Cloud, refreshing
 /// the stored session first if it's within 60 seconds of expiring. Returns
 /// `Ok(None)` if the user isn't signed in — callers (agent sync, analytics)
 /// treat that as "skip this sync, cloud features are opt-in," never as an

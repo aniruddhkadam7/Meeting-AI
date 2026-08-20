@@ -35,6 +35,15 @@ pub struct ConsultingSessionState {
     pub action_items: Vec<SalesTrackedItem>,
 }
 
+/// In-memory state for the currently-open Meeting session, tracked live from
+/// the overlay. Reset by `clear_meeting_session` when a new meeting starts.
+#[derive(Debug, Default)]
+pub struct MeetingSessionState {
+    pub key_points: Vec<SalesTrackedItem>,
+    pub decisions: Vec<SalesTrackedItem>,
+    pub action_items: Vec<SalesTrackedItem>,
+}
+
 /// Handles for an in-progress recording session, held so Tauri commands can stop it
 /// later. Wrapped in `Mutex` because Tauri commands run on arbitrary threads from
 /// the async runtime.
@@ -75,6 +84,9 @@ pub struct AppState {
     /// Live-tracked risks/assumptions/decisions/dependencies/action items for
     /// the currently open Consulting session. See `consulting_mode::commands`.
     pub consulting_session: Mutex<ConsultingSessionState>,
+    /// Live-tracked key points/decisions/action items for the currently open
+    /// Meeting session. See `meeting_mode::commands`.
+    pub meeting_session: Mutex<MeetingSessionState>,
     /// Mic-only capture session for Notes' voice dictation — reuses
     /// `CaptureSession` (system-audio fields simply stay `None`) so dictation
     /// gets the same start/pause/resume/stop lifecycle without a second

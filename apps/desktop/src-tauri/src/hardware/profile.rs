@@ -1,4 +1,4 @@
-//! Point-in-time snapshot of the machine WhitedotAI is running on. Detected fresh
+//! Point-in-time snapshot of the machine Smallbird is running on. Detected fresh
 //! at every app launch (see `manager::PerformanceManager::detect_and_load`)
 //! rather than cached across launches, since hardware/available-RAM can
 //! change between runs (e.g. a laptop plugged into a dock, a VM resize).
@@ -73,4 +73,66 @@ pub fn available_ram_mb() -> u64 {
     let mut sys = System::new();
     sys.refresh_memory();
     sys.available_memory() / (1024 * 1024)
+}
+
+/// Background, non-blocking system-wide CPU utilization sampler. `sysinfo`
+/// requires two readings spaced `MINIMUM_CPU_UPDATE_INTERVAL` (~200ms on
+/// Windows) apart to compute a meaningful usage delta — far too slow to
+/// take inline at an STT-sidecar-spawn or RAG-retrieval checkpoint (would
+/// directly cost real-time responsiveness, the system's #2 priority right
+/// after stability). Instead this runs one lightweight background thread,
+/// started once at app launch, that keeps sampling on that same interval
+/// and publishes the latest reading to a shared cell; checkpoint callers
+/// just read the last published value, never block on a fresh sample.
+pub struct CpuUsageSampler {
+    latest: std::sync::Arc<std::sync::atomic::AtomicU32>,
+}
+
+/// Sentinel published in `CpuUsageSampler::latest` until the first real
+/// sample completes (or forever, if the sampler thread failed to start) —
+/// distinguishes "no CPU reading available yet" from a genuine 0% idle
+/// reading, which a real machine can legitimately report. NaN never arises
+/// from `sysinfo`'s own usage calculation, so it's an unambiguous marker.
+const CPU_SAMPLE_PENDING: u32 = 0x7fc0_0000; // f32::NAN.to_bits(), inlined so `AtomicU32::new` stays const
+
+impl CpuUsageSampler {
+    /// Spawns the sampler thread and returns a cheap, cloneable handle to
+    /// its latest reading. Never fails — if thread spawn itself fails (an
+    /// extremely constrained system already under severe pressure), the
+    /// handle still works and simply reports "no reading" forever, which
+    /// `pressure` treats as "no CPU signal" rather than a false "fully
+    /// idle" claim that could mask real saturation (see
+    /// `pressure::PressureTracker`).
+    pub fn start() -> Self {
+        let latest = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(CPU_SAMPLE_PENDING));
+        let published = latest.clone();
+        let spawned = std::thread::Builder::new()
+            .name("cpu-pressure-sampler".into())
+            .spawn(move || {
+                let mut sys = System::new();
+                sys.refresh_cpu_usage();
+                loop {
+                    std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
+                    sys.refresh_cpu_usage();
+                    let pct = sys.global_cpu_usage();
+                    published.store(pct.to_bits(), std::sync::atomic::Ordering::Relaxed);
+                }
+            });
+        if spawned.is_err() {
+            log::warn!("failed to start CPU pressure sampler thread; CPU pressure protection will be inactive");
+        }
+        Self { latest }
+    }
+
+    /// Latest published reading, or `None` if no sample has completed yet
+    /// (briefly true right after `start()`, or permanently true if the
+    /// sampler thread failed to spawn). Never blocks.
+    pub fn latest_percent(&self) -> Option<f32> {
+        let bits = self.latest.load(std::sync::atomic::Ordering::Relaxed);
+        if bits == CPU_SAMPLE_PENDING {
+            None
+        } else {
+            Some(f32::from_bits(bits))
+        }
+    }
 }

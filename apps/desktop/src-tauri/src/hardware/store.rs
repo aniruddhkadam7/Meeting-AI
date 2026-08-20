@@ -135,7 +135,7 @@ mod tests {
     use super::*;
 
     fn temp_path(name: &str) -> PathBuf {
-        std::env::temp_dir().join(format!("whitedotai-perf-store-test-{name}-{}.json", std::process::id()))
+        std::env::temp_dir().join(format!("smallbird-perf-store-test-{name}-{}.json", std::process::id()))
     }
 
     // -- resolve(): the pure reconciliation decision --------------------

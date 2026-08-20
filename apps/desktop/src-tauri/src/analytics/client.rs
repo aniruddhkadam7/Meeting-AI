@@ -45,7 +45,7 @@ impl AnalyticsClient {
             .json(&Batch { events })
             .send()
             .await
-            .map_err(|e| format!("failed to reach WhitedotAI Cloud: {e}"))?;
+            .map_err(|e| format!("failed to reach Smallbird Cloud: {e}"))?;
 
         if response.status().is_success() {
             Ok(())

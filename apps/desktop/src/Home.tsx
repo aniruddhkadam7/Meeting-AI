@@ -43,10 +43,10 @@ export function Home({
     <div className="home-shell">
       <section className="home-hero">
         <div className="home-hero-text">
-          <span className="home-eyebrow">WhitedotAI</span>
+          <span className="home-eyebrow">Smallbird</span>
           <h1 className="home-title">Work smarter in every conversation.</h1>
           <p className="home-subtitle">
-            WhitedotAI gives you real-time guidance and clarity during the conversations that matter —
+            Smallbird gives you real-time guidance and clarity during the conversations that matter —
             starting with your next interview.
           </p>
         </div>

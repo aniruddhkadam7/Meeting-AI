@@ -1,5 +1,5 @@
-//! WhitedotAI Cloud sync: local-first mirroring of the desktop's on-disk Agent
-//! store (`agents::store::AgentStore`, `agents.json`) to WhitedotAI Cloud, so a
+//! Smallbird Cloud sync: local-first mirroring of the desktop's on-disk Agent
+//! store (`agents::store::AgentStore`, `agents.json`) to Smallbird Cloud, so a
 //! signed-in user's agents survive a reinstall or (later) show up on a
 //! second machine.
 //!

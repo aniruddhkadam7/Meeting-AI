@@ -1,6 +1,6 @@
 """Backend configuration, sourced from environment variables / .env.
 
-WhitedotAI Cloud (hybrid architecture): this service now also verifies Supabase
+Smallbird Cloud (hybrid architecture): this service now also verifies Supabase
 Auth JWTs and writes usage/cost tracking to Supabase Postgres via the
 service-role key. Both are optional at the config level — an unset
 `SUPABASE_*` block means auth-required routes reject with a clear 401 (server
@@ -90,7 +90,7 @@ class Settings:
 
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
 
-    # --- WhitedotAI Cloud: Supabase Auth + Postgres ---------------------------
+    # --- Smallbird Cloud: Supabase Auth + Postgres ---------------------------
     # Project URL and anon key are the same values the desktop app is given
     # (safe to be non-secret; RLS is what actually protects data). The JWT
     # secret and service-role key are backend-only and must never be sent to

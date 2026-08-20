@@ -14,7 +14,7 @@ def _build_app(settings: Settings) -> FastAPI:
     module-level import-time side effects that make reloading the real
     `app.main` module for a single test unreliable."""
     return FastAPI(
-        title="WhitedotAI Backend",
+        title="Smallbird Backend",
         version="0.1.0",
         docs_url=None if settings.is_production else "/docs",
         redoc_url=None if settings.is_production else "/redoc",

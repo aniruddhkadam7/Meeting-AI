@@ -16,6 +16,8 @@ mod consulting_mode;
 pub mod hardware;
 mod history;
 mod interview_mode;
+mod main_window;
+mod meeting_mode;
 mod notes_mode;
 mod overlay_window;
 mod process_util;
@@ -78,6 +80,7 @@ pub fn run() {
         .manage(history::HistoryStore::default())
         .manage(sales_mode::history::SalesHistoryStore::default())
         .manage(consulting_mode::history::ConsultingHistoryStore::default())
+        .manage(meeting_mode::history::MeetingHistoryStore::default())
         .manage(agents::store::AgentStore::default())
         .manage(agents::history::AgentHistoryStore::default())
         .manage(analytics::AnalyticsQueue::default())
@@ -96,6 +99,9 @@ pub fn run() {
                 }
             };
             app.manage(performance_state);
+
+            main_window::apply_light_titlebar(&app.handle().clone());
+            main_window::position_top_center(&app.handle().clone());
 
             use tauri_plugin_global_shortcut::GlobalShortcutExt;
             // Ctrl+Shift+Space: show/hide the Interview Mode overlay (spec
@@ -205,6 +211,18 @@ pub fn run() {
             consulting_mode::history::get_engagement_context,
             consulting_mode::history::archive_consulting_session,
             consulting_mode::history::delete_engagement,
+            meeting_mode::commands::show_meeting_overlay,
+            meeting_mode::commands::hide_meeting_overlay,
+            meeting_mode::commands::toggle_meeting_overlay,
+            meeting_mode::commands::set_meeting_overlay_always_on_top,
+            meeting_mode::commands::resize_meeting_overlay,
+            meeting_mode::commands::ask_meeting_question,
+            meeting_mode::commands::track_meeting_item,
+            meeting_mode::commands::clear_meeting_session,
+            meeting_mode::commands::end_meeting,
+            meeting_mode::history::list_meeting_history,
+            meeting_mode::history::archive_meeting,
+            meeting_mode::history::delete_meeting_history_entry,
             notes_mode::store::list_notes,
             notes_mode::store::get_note,
             notes_mode::store::create_note,
@@ -240,6 +258,7 @@ pub fn run() {
             hardware::commands::get_hardware_profile,
             hardware::commands::get_performance_mode,
             hardware::commands::set_performance_mode,
+            main_window::set_popover_content_height,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

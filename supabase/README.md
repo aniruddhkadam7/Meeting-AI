@@ -1,6 +1,6 @@
-# WhitedotAI Cloud — Supabase setup
+# Smallbird Cloud — Supabase setup
 
-This directory holds the SQL schema for WhitedotAI Cloud (Stage 1-2 of the hybrid
+This directory holds the SQL schema for Smallbird Cloud (Stage 1-2 of the hybrid
 migration — see `docs/cloud-migration.md`). Supabase provides Auth + Postgres;
 nothing else in this directory runs a server.
 
@@ -24,7 +24,7 @@ nothing else in this directory runs a server.
    `SUPABASE_JWT_SECRET` — `app/core/auth.py` verifies session tokens with
    HS256 against this value.
 5. Project Settings -> Auth: email/password sign-in is enabled by default,
-   which is all WhitedotAI needs for the beta. Leave email confirmations on.
+   which is all Smallbird needs for the beta. Leave email confirmations on.
 
 ## What's enforced
 

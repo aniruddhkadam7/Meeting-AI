@@ -1,6 +1,6 @@
 """Supabase JWT verification.
 
-WhitedotAI Cloud does not run its own user/password auth — Supabase Auth issues
+Smallbird Cloud does not run its own user/password auth — Supabase Auth issues
 the JWT when the desktop app signs a user in directly against Supabase. This
 backend only ever *verifies* that JWT on incoming requests; it never sees a
 password and never mints a session itself.

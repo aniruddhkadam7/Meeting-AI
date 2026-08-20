@@ -24,6 +24,7 @@ because of it.
 from __future__ import annotations
 
 import logging
+import re
 import time
 from typing import AsyncIterator, List
 
@@ -366,9 +367,35 @@ _ARCHITECTURE_MARKERS = (
 )
 _VERY_LONG_SCOPE_WORDS = ("complete", "entire", "whole", "full")
 _VERY_LONG_TOPIC_WORDS = ("architecture", "implementation", "system", "pipeline", "design", "flow", "workflow")
-_VERY_LONG_PHRASES = ("from start to finish", "beginning to end", "in full detail", "in complete detail")
+_VERY_LONG_PHRASES = (
+    "from start to finish",
+    "beginning to end",
+    "in full detail",
+    "in complete detail",
+    "end to end",
+    "end-to-end",
+)
 _WHY_COMPARISON_MARKERS = ("why did you", "why do you", "why does", "why is", "compare", "versus", " vs ", "instead of", "rather than")
 _PROJECT_MARKERS = ("tell me about a project", "tell me about your project", "walk me through your project", "tell me about a time", "describe a project")
+# "What are the types/kinds of X?" — and terser phrasings of the same ask,
+# like "retrieval types" or just "types" tacked onto a topic — inherently
+# asks to enumerate multiple named items, each earning its own short
+# explanation. That's a longer, list-shaped answer even when the question
+# itself is short/terse (a live interviewer often says the terse version),
+# so this is checked as standalone words rather than requiring the fuller
+# "types of X" phrasing.
+_ENUMERATION_WORDS = ("types", "type", "kinds", "kind", "categories", "category", "methods", "approaches", "techniques")
+
+
+def _word_in(text: str, word: str) -> bool:
+    """Whole-word containment check — `in` alone would match "type" inside
+    "prototype" or "types" inside "stereotypes", which `_ENUMERATION_WORDS`
+    single-word markers need to avoid (multi-word phrase markers elsewhere in
+    this module don't have this problem, since a false-positive substring
+    match on a multi-word phrase is far less likely)."""
+    return re.search(rf"\b{re.escape(word)}\b", text) is not None
+
+
 _DEFINITION_OPENERS = ("what is", "what are", "what's", "define", "have you used", "have you worked with", "do you know")
 # A question that zooms into ONE piece of something already discussed rather
 # than asking for the whole topic again — "What did you use for embeddings?"
@@ -439,6 +466,17 @@ def _classify_format(question: str) -> str | None:
             "FORMAT 2 (why/comparison): a one-sentence intro, then 2-4 short "
             "Markdown bullet points, then a one-sentence conclusion."
         )
+    # Checked ahead of _DEFINITION_OPENERS: "What are the types of X?" starts
+    # with "what are" but is asking to enumerate named items, not for a plain
+    # definition — it needs the fuller list format below, not FORMAT 1.
+    if any(_word_in(lowered, w) for w in _ENUMERATION_WORDS):
+        return (
+            "FORMAT 4-STYLE (enumeration): one-sentence intro naming how many "
+            "there are, then a Markdown numbered list (1. 2. 3. ...) — one named "
+            "item per line, each with a short explanation of what it is. Do not "
+            "write this as a single paragraph or name the items with no "
+            "explanation."
+        )
     if any(lowered.startswith(o) for o in _DEFINITION_OPENERS):
         return "FORMAT 1 (simple definition): 1-3 plain sentences, no headings, no lists."
 
@@ -457,46 +495,57 @@ _MEDIUM_MARKERS = _WHY_COMPARISON_MARKERS
 # "detailed" ceiling setting), a gpt-4o-mini-class model tended to use most of
 # the room regardless of what the target said. Capping the token budget
 # itself is what makes SHORT answers actually come back short.
+#
+# Each budget carries roughly 30% headroom above the stated word target's own
+# token-equivalent (~1.3 tokens/word for English) rather than sitting right at
+# it. max_tokens is a hard stop mid-generation, not a target the model tapers
+# toward — with zero slack, any answer that runs even slightly past its target
+# (routine variance, or now-common with real CV/JD facts to cite: specific
+# project names, dates, employers naturally taking a few more tokens per
+# thought than generic filler) gets cut off mid-sentence with no warning. The
+# prompt-text targets above are unchanged, so the model still aims for the
+# same length — this only stops a legitimate answer from being guillotined
+# for landing slightly over its own target.
 _LENGTH_TARGETS: dict[str, tuple[str, int]] = {
     "narrow_followup": (
         "SHORT/MEDIUM (about 20-50 words) — this zooms into ONE piece of "
         "something already covered. Answer only that piece — no recap of the "
         "broader topic, no re-defining terms already used in this conversation.",
-        70,
+        95,
     ),
     "example": (
         "SHORT (about 15-30 words) — answer only the narrowed thing asked for "
         "(e.g. just the example). Stop there even if the ceiling below allows more.",
-        45,
+        65,
     ),
     "direct_experience": (
         "SHORT (about 20-40 words) — lead with a direct yes/no plus one concrete "
         "detail (\"Yes, I've used it for...\"). Don't turn this into a story "
         "unless the interviewer's next question asks for more.",
-        55,
+        75,
     ),
     "short": (
         "SHORT (about 20-40 words, 1-3 sentences) — answer it and stop. Stop "
         "there even if the ceiling below allows more.",
-        55,
+        75,
     ),
     "medium": (
         "MEDIUM (about 40-80 words) — state the choice/reasoning concisely, a "
         "few sentences or short bullets. Stop there even if the ceiling below "
         "allows more.",
-        110,
+        145,
     ),
     "long": (
         "LONG (about 120-200 words) — this genuinely earns the fuller, "
         "structured answer per the FORMAT above; do not compress it.",
-        280,
+        360,
     ),
     "very_long": (
         "VERY LONG / DETAILED (about 200-320 words) — the interviewer "
         "explicitly asked for the complete picture. Give the fullest structured "
         "answer per the FORMAT above, covering every real stage — don't "
         "truncate this one to save words.",
-        420,
+        540,
     ),
 }
 
@@ -533,6 +582,12 @@ def _classify_length(question: str) -> tuple[str, int]:
         return _LENGTH_TARGETS["example"]
     if any(lowered.startswith(o) for o in _DIRECT_EXPERIENCE_MARKERS):
         return _LENGTH_TARGETS["direct_experience"]
+    # Checked ahead of _DEFINITION_OPENERS: "What are the types of X?" starts
+    # with "what are" but is asking to enumerate multiple named items, each
+    # with its own explanation — that earns LONG, not the SHORT plain
+    # definition a bare "what is/are" opener gets.
+    if any(_word_in(lowered, w) for w in _ENUMERATION_WORDS):
+        return _LENGTH_TARGETS["long"]
     if any(lowered.startswith(o) for o in _DEFINITION_OPENERS):
         return _LENGTH_TARGETS["short"]
     is_explicit_very_long_phrase = any(m in lowered for m in _VERY_LONG_PHRASES)

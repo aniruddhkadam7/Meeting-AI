@@ -69,7 +69,7 @@ Nothing is stored inside this repository. All documents, extracted text, and
 the vector store live under:
 
 ```
-%APPDATA%\WhitedotAI\knowledge\
+%APPDATA%\Smallbird\knowledge\
     documents\      raw uploaded files
     extracted\      cleaned extracted text
     vector_store\   knowledge.db (SQLite + sqlite-vec)

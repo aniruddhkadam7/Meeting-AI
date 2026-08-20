@@ -27,7 +27,7 @@ logging.basicConfig(
 logger = logging.getLogger("app")
 
 app = FastAPI(
-    title="WhitedotAI Backend",
+    title="Smallbird Backend",
     version="0.1.0",
     docs_url=None if settings.is_production else "/docs",
     redoc_url=None if settings.is_production else "/redoc",

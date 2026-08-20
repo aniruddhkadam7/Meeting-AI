@@ -1,5 +1,5 @@
 use tauri::{
-    window::Color, AppHandle, LogicalPosition, LogicalSize, Manager, WebviewUrl, WebviewWindow,
+    window::Color, AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, WebviewUrl, WebviewWindow,
     WebviewWindowBuilder,
 };
 
@@ -71,6 +71,16 @@ pub fn show_overlay_window(app: &AppHandle) -> Result<OverlayCaptureStatus, Stri
 
 /// Hides the overlay and brings the main window back, since Interview Mode
 /// hides it on entry (see `show_overlay_window`).
+///
+/// Also emits `interview-mode:overlay-closed` to every window. The overlay
+/// and main window are separate webviews with entirely separate React
+/// trees — there is no shared state between them — so the main window's own
+/// "Start"/"Stop" session status has no way to learn the session ended
+/// unless it was the one that called this in the first place (e.g. the user
+/// clicked the overlay's own ✕/"Yes, end interview" instead of the main
+/// window's Stop button). Without this event, the main window keeps
+/// showing "Stop" after the overlay is already gone, requiring a redundant
+/// click to catch up.
 pub fn close_overlay_window(app: &AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window(OVERLAY_WINDOW_LABEL) {
         window.hide().map_err(|e| e.to_string())?;
@@ -79,6 +89,7 @@ pub fn close_overlay_window(app: &AppHandle) -> Result<(), String> {
         main.show().map_err(|e| e.to_string())?;
         main.set_focus().map_err(|e| e.to_string())?;
     }
+    let _ = app.emit("interview-mode:overlay-closed", ());
     Ok(())
 }
 
@@ -144,7 +155,7 @@ pub fn is_capture_excluded(app: &AppHandle) -> bool {
 
 fn build_overlay_window(app: &AppHandle) -> Result<WebviewWindow, String> {
     WebviewWindowBuilder::new(app, OVERLAY_WINDOW_LABEL, WebviewUrl::App("index.html".into()))
-        .title("WhitedotAI Interview — Overlay")
+        .title("Smallbird Interview — Overlay")
         .inner_size(OVERLAY_FALLBACK_SIDE, OVERLAY_FALLBACK_SIDE)
         .min_inner_size(320.0, 320.0)
         .resizable(true)

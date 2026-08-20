@@ -1,4 +1,4 @@
-# WhitedotAI Backend
+# Smallbird Backend
 
 FastAPI service that receives a **finalized interview transcript** from the desktop
 app after the user explicitly clicks "Analyze Interview", and returns an analysis
@@ -34,7 +34,7 @@ curl http://127.0.0.1:8000/health
 should return:
 
 ```json
-{"status": "ok", "service": "whitedotai-backend"}
+{"status": "ok", "service": "smallbird-backend"}
 ```
 
 ## Test

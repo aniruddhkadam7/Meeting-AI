@@ -297,6 +297,74 @@ pub struct SalesCallSummary {
     pub message: String,
 }
 
+/// Wire types for Meeting Mode — matches `apps/backend/app/schemas/meeting.py`.
+#[derive(Debug, Clone, Serialize)]
+pub struct MeetingConversationTurn {
+    pub question: String,
+    pub answer: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MeetingRetrievedChunk {
+    pub text: String,
+    pub source_filename: String,
+    pub document_type: String,
+    pub score: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MeetingAskRequest {
+    pub question: String,
+    pub conversation_history: Vec<MeetingConversationTurn>,
+    pub retrieved_context: Vec<MeetingRetrievedChunk>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub meeting_title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub participants: Option<String>,
+    pub answer_length: String,
+    pub response_style: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MeetingAskResponse {
+    pub answer: String,
+    pub latency_ms: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MeetingTurnIn {
+    pub speaker: String,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MeetingSummaryRequest {
+    pub turns: Vec<MeetingTurnIn>,
+    pub key_points: Vec<String>,
+    pub decisions: Vec<String>,
+    pub action_items: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub meeting_title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub participants: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct MeetingSummary {
+    #[serde(default)]
+    pub summary: String,
+    #[serde(default)]
+    pub key_points: Vec<String>,
+    #[serde(default)]
+    pub decisions: Vec<String>,
+    #[serde(default)]
+    pub action_items: Vec<String>,
+    #[serde(default)]
+    pub next_steps: Vec<String>,
+    #[serde(default)]
+    pub message: String,
+}
+
 /// Wire types for Custom Agents — matches
 /// `apps/backend/app/schemas/agent_ask.py`. One generic shape shared by
 /// every predefined role and every fully custom agent, unlike Sales/

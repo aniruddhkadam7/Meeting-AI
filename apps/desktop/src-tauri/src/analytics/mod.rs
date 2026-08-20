@@ -1,6 +1,6 @@
 //! Lightweight, privacy-conscious product analytics.
 //!
-//! Events are queued in memory and flushed to WhitedotAI Cloud's
+//! Events are queued in memory and flushed to Smallbird Cloud's
 //! `/api/v1/analytics/events` in small batches, only when the user is
 //! signed in — analytics is opt-in by virtue of being tied to having an
 //! account, exactly like agent sync. Never queues raw audio, document

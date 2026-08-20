@@ -8,6 +8,7 @@ from app.api.routes import (
     consulting,
     health,
     interviews,
+    meeting,
     notes,
     sales,
     setup,
@@ -29,6 +30,7 @@ v1_router.include_router(ask.router, dependencies=_llm_rate_limit)
 v1_router.include_router(setup.router, dependencies=_llm_rate_limit)
 v1_router.include_router(sales.router, dependencies=_llm_rate_limit)
 v1_router.include_router(consulting.router, dependencies=_llm_rate_limit)
+v1_router.include_router(meeting.router, dependencies=_llm_rate_limit)
 v1_router.include_router(notes.router, dependencies=_llm_rate_limit)
 v1_router.include_router(agents.router, dependencies=_llm_rate_limit)
 v1_router.include_router(agent_sync.router)

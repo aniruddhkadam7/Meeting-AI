@@ -1,4 +1,4 @@
-# Fly.io deploy config for WhitedotAI Cloud's FastAPI backend — a single small
+# Fly.io deploy config for Smallbird Cloud's FastAPI backend — a single small
 # container, no autoscaling, suitable for the 10-50 user beta. Not activated
 # until `fly launch`/`fly deploy` is run by hand; this file just makes that a
 # one-command operation once a Fly.io account/app exists.
@@ -16,7 +16,7 @@
 # ENVIRONMENT=production disables /docs, /redoc, and /openapi.json (see
 # app/core/config.py, app/main.py) — set it for every real deployment.
 
-app = "whitedotai-cloud-backend"
+app = "smallbird-cloud-backend"
 primary_region = "iad"
 
 [build]

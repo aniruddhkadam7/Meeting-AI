@@ -5,6 +5,7 @@ import App from "./App";
 import { InterviewOverlay } from "./InterviewOverlay";
 import { SalesOverlay } from "./SalesOverlay";
 import { ConsultingOverlay } from "./ConsultingOverlay";
+import { MeetingOverlay } from "./MeetingOverlay";
 import { AgentOverlay } from "./AgentOverlay";
 import "./overlay.css";
 
@@ -15,7 +16,12 @@ import "./overlay.css";
 // (`agent-overlay-<id>`, one per agent) rather than a fixed one, since any
 // number of agents can exist — so that one is matched by prefix instead of
 // exact membership in a fixed set.
-const FIXED_OVERLAY_LABELS = new Set(["interview-overlay", "sales-overlay", "consulting-overlay"]);
+const FIXED_OVERLAY_LABELS = new Set([
+  "interview-overlay",
+  "sales-overlay",
+  "consulting-overlay",
+  "meeting-overlay",
+]);
 const AGENT_OVERLAY_PREFIX = "agent-overlay-";
 
 const label = getCurrentWebviewWindow().label;
@@ -36,6 +42,7 @@ function Root() {
   if (label === "interview-overlay") return <InterviewOverlay />;
   if (label === "sales-overlay") return <SalesOverlay />;
   if (label === "consulting-overlay") return <ConsultingOverlay />;
+  if (label === "meeting-overlay") return <MeetingOverlay />;
   if (isAgentOverlay) return <AgentOverlay />;
   return <App />;
 }

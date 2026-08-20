@@ -38,7 +38,7 @@ _MAX_AGENT_ID_LENGTH = 128
 
 @router.get("/health")
 def health() -> dict:
-    return {"status": "ok", "service": "whitedotai-rag"}
+    return {"status": "ok", "service": "smallbird-rag"}
 
 
 class ThrottleRequest(BaseModel):

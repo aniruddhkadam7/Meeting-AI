@@ -1,5 +1,5 @@
 //! Thin client for Supabase Auth's REST API (GoTrue). The desktop app talks
-//! to Supabase directly for sign-in/sign-up/refresh — WhitedotAI's own FastAPI
+//! to Supabase directly for sign-in/sign-up/refresh — Smallbird's own FastAPI
 //! backend never sees a password, it only ever verifies the resulting JWT
 //! (see apps/backend/app/core/auth.py).
 
@@ -64,7 +64,7 @@ impl SupabaseAuthClient {
         let key = supabase_anon_key();
         if url.is_empty() || key.is_empty() {
             return Err(
-                "WhitedotAI Cloud is not configured on this build (missing SUPABASE_URL/SUPABASE_ANON_KEY)"
+                "Smallbird Cloud is not configured on this build (missing SUPABASE_URL/SUPABASE_ANON_KEY)"
                     .to_string(),
             );
         }
@@ -85,7 +85,7 @@ impl SupabaseAuthClient {
             .json(&serde_json::json!({ "email": email, "password": password }))
             .send()
             .await
-            .map_err(|e| format!("could not reach WhitedotAI Cloud: {e}"))?;
+            .map_err(|e| format!("could not reach Smallbird Cloud: {e}"))?;
 
         let status = response.status();
         let body_text = response.text().await.unwrap_or_default();
@@ -125,7 +125,7 @@ impl SupabaseAuthClient {
             .json(&serde_json::json!({ "email": email, "password": password }))
             .send()
             .await
-            .map_err(|e| format!("could not reach WhitedotAI Cloud: {e}"))?;
+            .map_err(|e| format!("could not reach Smallbird Cloud: {e}"))?;
 
         let status = response.status();
         let body_text = response.text().await.unwrap_or_default();
@@ -138,7 +138,7 @@ impl SupabaseAuthClient {
         }
 
         let parsed: GoTrueTokenResponse =
-            serde_json::from_str(&body_text).map_err(|e| format!("unexpected response from WhitedotAI Cloud: {e}"))?;
+            serde_json::from_str(&body_text).map_err(|e| format!("unexpected response from Smallbird Cloud: {e}"))?;
 
         Ok(Session {
             access_token: parsed.access_token,
@@ -161,7 +161,7 @@ impl SupabaseAuthClient {
             .json(&serde_json::json!({ "refresh_token": refresh_token }))
             .send()
             .await
-            .map_err(|e| format!("could not reach WhitedotAI Cloud: {e}"))?;
+            .map_err(|e| format!("could not reach Smallbird Cloud: {e}"))?;
 
         let status = response.status();
         let body_text = response.text().await.unwrap_or_default();
@@ -174,7 +174,7 @@ impl SupabaseAuthClient {
         }
 
         let parsed: GoTrueTokenResponse =
-            serde_json::from_str(&body_text).map_err(|e| format!("unexpected response from WhitedotAI Cloud: {e}"))?;
+            serde_json::from_str(&body_text).map_err(|e| format!("unexpected response from Smallbird Cloud: {e}"))?;
 
         Ok(Session {
             access_token: parsed.access_token,
@@ -223,7 +223,7 @@ fn parse_signup_body(body_text: &str) -> Result<Option<Session>, String> {
         return Ok(None);
     }
 
-    Err(format!("unexpected response from WhitedotAI Cloud: {body_text}"))
+    Err(format!("unexpected response from Smallbird Cloud: {body_text}"))
 }
 
 #[cfg(test)]

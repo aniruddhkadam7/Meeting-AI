@@ -20,6 +20,12 @@ pub struct PerformanceModeInfo {
     /// physical PC than the one an explicit mode override was chosen on,
     /// so it was reset to Adaptive. See `hardware::store`'s module doc.
     pub hardware_refreshed: bool,
+    /// `true` when this machine scored into the lowest capability tier
+    /// (`HardwareTier::Entry`) — used by the UI to show a one-time,
+    /// non-blocking "your hardware is below our recommended configuration"
+    /// notice. Purely informational: never affects `effective_config()`,
+    /// never blocks install/launch/usage.
+    pub is_below_recommended: bool,
 }
 
 #[tauri::command]
@@ -36,6 +42,7 @@ pub fn get_performance_mode(state: State<'_, PerformanceState>) -> Result<Perfor
         detected_tier: manager.detected_tier(),
         effective_config: manager.effective_config(),
         hardware_refreshed: manager.hardware_refreshed(),
+        is_below_recommended: manager.detected_tier() == HardwareTier::Entry,
     })
 }
 
@@ -58,7 +65,7 @@ pub fn get_performance_mode(state: State<'_, PerformanceState>) -> Result<Perfor
 /// in-progress recording's STT sidecar on a settings change would be a
 /// worse user experience than a stale thread count for the rest of the
 /// current session. The cloud LLM/backend architecture is untouched by mode
-/// changes entirely — WhitedotAI's LLM call is not hardware-tiered (see
+/// changes entirely — Smallbird's LLM call is not hardware-tiered (see
 /// `hardware::manager`'s module doc).
 #[tauri::command]
 pub async fn set_performance_mode(
