@@ -1,9 +1,11 @@
-import { useNavigate } from "react-router-dom"
+"use client"
+
+import { useRouter } from "next/navigation"
 import { Download } from "lucide-react"
 import { LiquidButton } from "@/components/ui/liquid-glass-button"
 
 export function DownloadSection() {
-  const navigate = useNavigate()
+  const router = useRouter()
 
   return (
     <section id="download" className="scroll-mt-16 border-t border-border py-20 px-4 sm:py-28">
@@ -17,7 +19,7 @@ export function DownloadSection() {
         </p>
 
         <div className="mt-8 flex justify-center">
-          <LiquidButton size="xl" onClick={() => navigate("/download")}>
+          <LiquidButton size="xl" onClick={() => router.push("/download")}>
             <Download className="h-4 w-4" />
             Get the Windows app
           </LiquidButton>

@@ -1,3 +1,5 @@
+"use client"
+
 import { motion } from "motion/react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Briefcase, Users } from "lucide-react"

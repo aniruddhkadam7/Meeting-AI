@@ -1,3 +1,5 @@
+"use client"
+
 import { LiquidButton } from "@/components/ui/liquid-glass-button"
 
 export function FinalCta() {

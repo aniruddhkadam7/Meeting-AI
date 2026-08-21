@@ -1,3 +1,5 @@
+"use client"
+
 import { motion } from "motion/react"
 import { Zap, FileStack, Cpu, Sparkles, Monitor, Gauge } from "lucide-react"
 

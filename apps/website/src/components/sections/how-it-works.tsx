@@ -1,3 +1,5 @@
+"use client"
+
 import { motion } from "motion/react"
 import { FolderOpen, Ear, Brain, Sparkles } from "lucide-react"
 

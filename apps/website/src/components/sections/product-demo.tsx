@@ -1,3 +1,5 @@
+"use client"
+
 import { useState } from "react"
 import { SegmentedToggle } from "@/components/ui/segmented-toggle"
 import { AppMockupInterview } from "@/components/blocks/app-mockup-interview"

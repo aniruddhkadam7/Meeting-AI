@@ -1,3 +1,4 @@
+import Image from "next/image"
 import logo from "@/assets/smallbird-logo.png"
 
 const columns = [
@@ -33,7 +34,7 @@ export function Footer() {
       <div className="mx-auto max-w-5xl">
         <div className="grid gap-10 sm:grid-cols-[1.5fr_1fr_1fr_1fr]">
           <div>
-            <img src={logo} alt="Smallbird" className="h-8 w-auto" />
+            <Image src={logo} alt="Smallbird" className="h-8 w-auto" />
             <p className="mt-3 max-w-xs text-sm text-muted-foreground">
               AI assistance for important conversations.
             </p>

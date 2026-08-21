@@ -1,16 +1,18 @@
-import { Link } from "react-router-dom"
+"use client"
+
+import Link from "next/link"
 import { ArrowLeft, Monitor, Apple, Download } from "lucide-react"
 import { LiquidButton } from "@/components/ui/liquid-glass-button"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
 import { PLAN_LABELS, usePurchaseFlow } from "@/lib/purchase-flow"
 
-export function DownloadPage() {
+export default function DownloadPage() {
   const { canDownload, selectedPlan, startFlow } = usePurchaseFlow()
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-16 sm:py-24">
       <Link
-        to="/"
+        href="/"
         className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
         <ArrowLeft className="h-4 w-4" />

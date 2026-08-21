@@ -1,3 +1,5 @@
+"use client"
+
 import { motion } from "motion/react"
 import { Check } from "lucide-react"
 import { LiquidButton } from "@/components/ui/liquid-glass-button"

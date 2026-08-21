@@ -1,4 +1,7 @@
-import { useNavigate } from "react-router-dom"
+"use client"
+
+import { useRouter } from "next/navigation"
+import Image from "next/image"
 import { Download } from "lucide-react"
 import logo from "@/assets/smallbird-logo.png"
 import { LiquidButton } from "@/components/ui/liquid-glass-button"
@@ -12,14 +15,14 @@ const links = [
 ]
 
 export function Nav() {
-  const navigate = useNavigate()
+  const router = useRouter()
 
   return (
     <header className="sticky top-4 z-50 flex justify-center px-4">
       <LiquidGlassContainer className="w-full max-w-5xl">
         <div className="flex h-16 w-full items-center justify-between gap-4 px-4">
           <a href="/" className="flex items-center gap-2">
-            <img src={logo} alt="Smallbird" className="h-6 w-auto" />
+            <Image src={logo} alt="Smallbird" className="h-6 w-auto" priority />
           </a>
           <nav className="hidden items-center gap-8 sm:flex">
             {links.map((link) => (
@@ -33,7 +36,7 @@ export function Nav() {
             ))}
           </nav>
           <div className="flex items-center gap-2">
-            <LiquidButton size="sm" variant="outline" onClick={() => navigate("/download")}>
+            <LiquidButton size="sm" variant="outline" onClick={() => router.push("/download")}>
               <Download className="h-3.5 w-3.5" />
               Download
             </LiquidButton>
