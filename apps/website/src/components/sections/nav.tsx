@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { Download } from "lucide-react"
 import logo from "@/assets/smallbird-logo.png"
+import { cn } from "@/lib/utils"
 import { LiquidButton } from "@/components/ui/liquid-glass-button"
 import { LiquidGlassContainer } from "@/components/ui/liquid-glass-container"
 
@@ -23,13 +24,22 @@ export function Nav() {
         <div className="flex h-16 w-full items-center justify-between gap-4 px-4">
           <a href="/" className="flex items-center gap-2">
             <Image src={logo} alt="Smallbird" className="h-6 w-auto" priority />
+            <span
+              className="text-2xl font-bold tracking-tight text-foreground"
+              style={{ fontFamily: "var(--font-playfair-display)" }}
+            >
+              SmallBird
+            </span>
           </a>
           <nav className="hidden items-center gap-8 sm:flex">
             {links.map((link) => (
               <a
                 key={link.label}
                 href={link.href}
-                className="text-sm font-medium text-foreground/80 transition-colors hover:text-foreground"
+                className={cn(
+                  "border-b-2 border-transparent pb-1 text-sm font-medium text-foreground/80 transition-colors",
+                  "hover:border-foreground/30 hover:text-foreground",
+                )}
               >
                 {link.label}
               </a>
