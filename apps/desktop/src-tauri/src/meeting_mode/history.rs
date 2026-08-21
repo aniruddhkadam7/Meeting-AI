@@ -1,6 +1,5 @@
-//! On-disk archive of past Meeting Mode meetings — same load/save/Mutex<Vec<_>>
-//! pattern as `sales_mode::history`, against its own file so the two data
-//! shapes never collide.
+//! On-disk archive of past Meeting Mode meetings — load/save against its own
+//! file, backed by a `Mutex<Vec<_>>` in memory.
 
 use std::fs;
 use std::path::PathBuf;

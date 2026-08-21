@@ -15,15 +15,11 @@ mod types;
 pub use client::BackendClient;
 pub use config::backend_url;
 pub use types::{
-    AgentAskRequest, AgentAskResponse, AgentConversationTurn, AgentPersonalization,
-    AgentRetrievedChunk, AnalysisProgressEvent, AskRequest, AskResponse, AskRetrievedChunk,
-    ConsultingAskRequest, ConsultingAskResponse, ConsultingConversationTurn, ConsultingNote,
-    ConsultingRetrievedChunk, ConsultingSummaryRequest, ConsultingTurnIn, ConversationTurn,
+    AnalysisProgressEvent, AskRequest, AskResponse, AskRetrievedChunk, ConversationTurn,
     InterviewAnalysisRequest, MeetingAskRequest, MeetingAskResponse, MeetingConversationTurn,
     MeetingRetrievedChunk, MeetingSummary, MeetingSummaryRequest, MeetingTurnIn, NoteContext,
     NoteSummary, NotesAskRequest, NotesAskResponse, NotesSummaryRequest, OverallInterviewAnalysis,
-    QuestionAnalysis, RetrievedSourceRef, SalesAskRequest, SalesAskResponse, SalesCallSummary,
-    SalesConversationTurn, SalesRetrievedChunk, SalesSummaryRequest, SalesTurnIn,
-    SetupAnalysisRequest, SetupAnalysisResponse, WireAudioSource, WireCandidateContext,
-    WireQuestionAnswer, WireRetrievedChunk, WireTranscript, WireTranscriptSegment,
+    QuestionAnalysis, RetrievedSourceRef, SetupAnalysisRequest, SetupAnalysisResponse,
+    WireAudioSource, WireCandidateContext, WireQuestionAnswer, WireRetrievedChunk, WireTranscript,
+    WireTranscriptSegment,
 };

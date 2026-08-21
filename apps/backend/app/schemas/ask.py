@@ -36,6 +36,11 @@ AnswerLength = Literal["brief", "default", "detailed"]
 ResponseStyle = Literal["natural", "technical", "concise"]
 EnglishLevel = Literal["simple", "professional", "advanced"]
 Humanization = Literal["natural", "conversational", "formal"]
+# Only providers with a real LLMProvider implementation (see
+# app/services/llm/__init__.py::get_llm_provider) — DeepSeek isn't built yet,
+# so it's not a valid value here even though the desktop app's header
+# dropdown lists it (disabled) for a future provider.
+LlmProviderChoice = Literal["openai", "anthropic", "gemini"]
 
 
 class AskRetrievedChunk(BaseModel):
@@ -71,6 +76,10 @@ class AskRequest(BaseModel):
     response_style: ResponseStyle = "natural"
     english_level: EnglishLevel = "simple"
     humanization: Humanization = "natural"
+    # None keeps the server-configured LLM_PROVIDER default (see
+    # get_llm_provider) — set only when the user has explicitly chosen a
+    # provider in the desktop app's header dropdown.
+    llm_provider: Optional[LlmProviderChoice] = None
 
 
 class AskResponse(BaseModel):

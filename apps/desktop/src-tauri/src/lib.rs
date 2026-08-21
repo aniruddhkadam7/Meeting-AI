@@ -1,4 +1,3 @@
-mod agents;
 mod analytics;
 mod analyzer;
 // Public so the `audio_probe` binary (src/bin/audio_probe.rs) can drive the
@@ -7,9 +6,7 @@ mod analyzer;
 pub mod audio;
 mod auth;
 mod backend;
-mod cloud_sync;
 mod commands;
-mod consulting_mode;
 // Public so the RAG/STT spawn call sites and the `rag-bench`/`stt-bench`
 // verification steps (Milestone 4a) can reference `PerformanceConfig`
 // without a re-export chain.
@@ -22,7 +19,6 @@ mod notes_mode;
 mod overlay_window;
 mod process_util;
 mod rag;
-mod sales_mode;
 mod state;
 mod tls_init;
 mod updater;
@@ -78,11 +74,7 @@ pub fn run() {
         )
         .manage(AppState::default())
         .manage(history::HistoryStore::default())
-        .manage(sales_mode::history::SalesHistoryStore::default())
-        .manage(consulting_mode::history::ConsultingHistoryStore::default())
         .manage(meeting_mode::history::MeetingHistoryStore::default())
-        .manage(agents::store::AgentStore::default())
-        .manage(agents::history::AgentHistoryStore::default())
         .manage(analytics::AnalyticsQueue::default())
         .manage(hardware::stt_rag_coordination::SttRagCoordination::default())
         .setup(|app| {
@@ -189,28 +181,6 @@ pub fn run() {
             history::list_interview_history,
             history::archive_interview_session,
             history::delete_interview_history_entry,
-            sales_mode::commands::show_sales_overlay,
-            sales_mode::commands::hide_sales_overlay,
-            sales_mode::commands::toggle_sales_overlay,
-            sales_mode::commands::ask_sales_question,
-            sales_mode::commands::track_sales_item,
-            sales_mode::commands::clear_sales_session,
-            sales_mode::commands::end_sales_call,
-            sales_mode::history::list_sales_history,
-            sales_mode::history::archive_sales_call,
-            sales_mode::history::delete_sales_history_entry,
-            consulting_mode::commands::show_consulting_overlay,
-            consulting_mode::commands::hide_consulting_overlay,
-            consulting_mode::commands::toggle_consulting_overlay,
-            consulting_mode::commands::ask_consulting_question,
-            consulting_mode::commands::track_consulting_item,
-            consulting_mode::commands::clear_consulting_session,
-            consulting_mode::commands::end_consulting_session,
-            consulting_mode::history::list_engagements,
-            consulting_mode::history::create_engagement,
-            consulting_mode::history::get_engagement_context,
-            consulting_mode::history::archive_consulting_session,
-            consulting_mode::history::delete_engagement,
             meeting_mode::commands::show_meeting_overlay,
             meeting_mode::commands::hide_meeting_overlay,
             meeting_mode::commands::toggle_meeting_overlay,
@@ -233,26 +203,11 @@ pub fn run() {
             notes_mode::dictation::stop_note_dictation,
             notes_mode::ai::summarize_note,
             notes_mode::ai::ask_about_notes,
-            agents::store::list_agents,
-            agents::store::get_agent,
-            agents::store::create_agent,
-            agents::store::update_agent,
-            agents::store::delete_agent,
-            agents::history::list_agent_history,
-            agents::history::archive_agent_conversation,
-            agents::history::delete_agent_history_entry,
-            agents::ask::ask_agent_question,
-            agents::overlay::show_agent_overlay,
-            agents::overlay::hide_agent_overlay,
-            agents::overlay::toggle_agent_overlay,
-            agents::overlay::resize_agent_overlay,
-            agents::overlay::set_agent_overlay_always_on_top,
             auth::commands::auth_cloud_configured,
             auth::commands::auth_sign_up,
             auth::commands::auth_sign_in,
             auth::commands::auth_sign_out,
             auth::commands::auth_get_session,
-            cloud_sync::commands::sync_agents_now,
             updater::check_for_update,
             updater::install_update_and_restart,
             hardware::commands::get_hardware_profile,

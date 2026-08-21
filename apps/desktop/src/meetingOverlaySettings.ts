@@ -1,8 +1,12 @@
 // Meeting Mode overlay settings — persisted to localStorage, mirroring
 // Interview Mode's overlaySettings.ts so both overlays feel like the same
-// product. Only the fields that make sense for Meeting Mode are kept: no
-// role/job description/English level/humanization/Auto AI, since those are
+// product. Only appearance/window fields live here: no role/job
+// description/English level/humanization/Auto AI, since those are
 // Interview-specific answer-shaping controls with no meeting analogue.
+// answerLength/responseStyle (which DO apply to Meeting Mode — see
+// PersonalizationPanel.tsx) are shared with Interview Mode via
+// overlaySettings.ts rather than duplicated here, so one Personalization
+// screen in Settings covers both modes.
 
 export type OverlayDensity = "compact" | "comfortable";
 export type OverlaySize = "small" | "medium" | "large";

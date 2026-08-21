@@ -119,15 +119,32 @@ fn stt_venv_python() -> Option<std::path::PathBuf> {
 /// executable with its own Python runtime and sherpa-onnx/numpy embedded, so
 /// end users need nothing installed to run it. `None` when there's no
 /// `AppHandle` (the headless `bin/pipeline_test*.rs` binaries) or the
-/// resource simply isn't there (plain `cargo build`/`tauri dev`, where the
-/// venv path above is used instead).
+/// resource simply isn't there.
+///
+/// `tauri dev` has no bundled-resource directory at all (Tauri's resource
+/// resolver only exists for a built app), so this used to unconditionally
+/// fall back to the venv path below in dev — meaning every dev-mode STT
+/// start paid for a cold Python interpreter + sherpa-onnx import + model load
+/// from disk (several seconds), even on a machine that had already run
+/// `freeze_sidecar.py` and had the exact same frozen exe sitting right there
+/// unused. This now also checks that repo-relative dev build output
+/// directly, so `tauri dev` gets the same fast startup as a release build
+/// whenever the frozen sidecar has been built at least once — falling back
+/// to the venv path only if it genuinely hasn't.
 fn frozen_sidecar_path(app: Option<&AppHandle>) -> Option<std::path::PathBuf> {
-    let app = app?;
-    let candidate = app
-        .path()
-        .resolve("stt-sidecar/stt-sidecar.exe", BaseDirectory::Resource)
-        .ok()?;
-    candidate.exists().then_some(candidate)
+    if let Some(app) = app {
+        if let Ok(candidate) = app.path().resolve("stt-sidecar/stt-sidecar.exe", BaseDirectory::Resource) {
+            if candidate.exists() {
+                return Some(candidate);
+            }
+        }
+    }
+
+    let dev_candidate = stt_package_dir()
+        .join("dist")
+        .join("stt-sidecar")
+        .join("stt-sidecar.exe");
+    dev_candidate.exists().then_some(dev_candidate)
 }
 
 /// The STT model directory bundled as a resource (see `bundle.resources` in
@@ -206,9 +223,18 @@ impl SttSidecar {
         // venv interpreter running the source script directly; or, for the
         // PocketSphinx comparison engine only (never frozen — it's not the
         // production engine), whatever system Python is on PATH.
+        let mut used_frozen_sidecar_without_bundle = false;
         let (executable, args) = if let (SttEngineKind::StreamingAsr, Some(frozen)) =
             (engine, frozen_sidecar_path(app))
         {
+            // `resource_model_dir(app)` below tells us whether this frozen
+            // exe actually came from a real Tauri resource bundle (release
+            // build) or from `frozen_sidecar_path`'s dev-mode fallback onto
+            // `packages/stt/dist/` directly — only the latter needs
+            // `STT_MODEL_DIR` set explicitly, since the frozen exe's own
+            // relative-default model resolution doesn't work outside a
+            // PyInstaller bundle's real install location.
+            used_frozen_sidecar_without_bundle = resource_model_dir(app).is_none();
             (frozen.to_string_lossy().to_string(), vec![source_arg.to_string()])
         } else {
             let (python, mut base_args) = match (engine, stt_venv_python()) {
@@ -263,10 +289,30 @@ impl SttSidecar {
         // whatever STT_MODEL_DIR the parent process happens to have set —
         // the dev/test fallback below is only meaningful when there's no
         // bundle to find one in.
+        //
+        // The frozen exe's own default model path (sidecar.py's
+        // `_resolve_model_dir`) is resolved relative to `__file__`, which
+        // under PyInstaller points into the frozen bundle's temp extraction
+        // directory, not this repo — so when `tauri dev`'s dev-mode fallback
+        // above picked the frozen exe from `packages/stt/dist/` (no
+        // Tauri resource bundle to resolve `resource_model_dir` from), it
+        // still needs `STT_MODEL_DIR` pointed at the repo's `models/stt/`
+        // directory explicitly, exactly as a real release build's resource
+        // bundle would.
         if let Some(dir) = resource_model_dir(app) {
             command.env("STT_MODEL_DIR", dir);
         } else if let Ok(dir) = std::env::var("STT_MODEL_DIR") {
             command.env("STT_MODEL_DIR", dir);
+        } else if used_frozen_sidecar_without_bundle {
+            let dev_model_dir = stt_package_dir()
+                .join("..")
+                .join("..")
+                .join("models")
+                .join("stt")
+                .join("nemo-fastconformer-80ms-int8");
+            if dev_model_dir.is_dir() {
+                command.env("STT_MODEL_DIR", dev_model_dir);
+            }
         }
 
         let mut child = command

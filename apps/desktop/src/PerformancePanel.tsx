@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Button } from "./ui";
 
 interface HardwareProfile {
   cpuPhysicalCores: number;
@@ -76,10 +75,15 @@ function formatStorage(profile: HardwareProfile): string | null {
 
 /// Smallbird Performance panel: shows the machine's detected hardware and lets
 /// the user pick Adaptive (default)/Maximum Performance/Battery Saver.
-/// Mirrors Account.tsx's modal shell/state conventions — local useState
-/// only, typed invoke<T> calls, busy/error handling around the one write
-/// action (set_performance_mode).
-export function PerformancePanel({ onClose }: { onClose: () => void }) {
+/// Renders as plain content — no popover shell of its own — since it's
+/// shown inline inside SettingsPopover.tsx's settings-popover-content
+/// alongside the section nav (Sessions/Personalization/etc.), the same way
+/// every other section renders. It used to render its own full
+/// .popover-overlay/.popover with its own header/close button, which meant
+/// opening it replaced the entire Settings popover — including the nav
+/// rail — so there was no way back to another section short of closing and
+/// reopening Settings; that's what looked like the nav "hiding" itself.
+export function PerformancePanel() {
   const [profile, setProfile] = useState<HardwareProfile | null>(null);
   const [modeInfo, setModeInfo] = useState<PerformanceModeInfo | null>(null);
   const [busy, setBusy] = useState(false);
@@ -106,100 +110,82 @@ export function PerformancePanel({ onClose }: { onClose: () => void }) {
   }, []);
 
   return (
-    <div
-      className="popover-overlay"
-      onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}
-    >
-      <div className="popover" role="dialog" aria-modal="true" aria-label="Smallbird Performance">
-        <div className="popover-header">
-          <span className="setup-section-label">Smallbird Performance</span>
-          <button className="modal-close-btn" onClick={onClose} title="Close" aria-label="Close">
-            ✕
+    <>
+      {error && <p className="error">{error}</p>}
+
+      {profile && (
+        <>
+          <p className="setup-hint">Hardware detected on this device:</p>
+          <p>
+            {profile.cpuLogicalCores} CPU cores
+            {profile.cpuBrand ? ` (${profile.cpuBrand})` : ""}
+          </p>
+          <p>{Math.round(profile.totalRamMb / 1024)} GB memory</p>
+          <p>{formatGpu(profile)}</p>
+          {formatStorage(profile) && <p className="setup-hint">Storage: {formatStorage(profile)}</p>}
+        </>
+      )}
+
+      {modeInfo && (
+        <p className="setup-hint">
+          Hardware tier: <strong>{TIER_LABELS[modeInfo.detectedTier]}</strong>
+        </p>
+      )}
+
+      {modeInfo?.hardwareRefreshed && (
+        <p className="setup-hint">
+          Hardware profile refreshed because this looks like different hardware than last time — performance
+          mode was reset to Adaptive.
+        </p>
+      )}
+
+      {modeInfo?.isBelowRecommended && (
+        <p className="setup-hint">
+          Your PC can run Smallbird, but your hardware is below our recommended configuration. Real-time
+          transcription may be slower.
+        </p>
+      )}
+
+      <div className="agent-mode-toggle">
+        {MODE_OPTIONS.map((opt) => (
+          <button
+            key={opt.value}
+            className={`agent-mode-tab${modeInfo?.mode === opt.value ? " active" : ""}`}
+            onClick={() => handleSelectMode(opt.value)}
+            disabled={busy}
+          >
+            {opt.label}
           </button>
-        </div>
-
-        <div className="popover-body">
-          {error && <p className="error">{error}</p>}
-
-          {profile && (
-            <>
-              <p className="setup-hint">Hardware detected on this device:</p>
-              <p>
-                {profile.cpuLogicalCores} CPU cores
-                {profile.cpuBrand ? ` (${profile.cpuBrand})` : ""}
-              </p>
-              <p>{Math.round(profile.totalRamMb / 1024)} GB memory</p>
-              <p>{formatGpu(profile)}</p>
-              {formatStorage(profile) && <p className="setup-hint">Storage: {formatStorage(profile)}</p>}
-            </>
-          )}
-
-          {modeInfo && (
-            <p className="setup-hint">
-              Hardware tier: <strong>{TIER_LABELS[modeInfo.detectedTier]}</strong>
-            </p>
-          )}
-
-          {modeInfo?.hardwareRefreshed && (
-            <p className="setup-hint">
-              Hardware profile refreshed because this looks like different hardware than last time —
-              performance mode was reset to Adaptive.
-            </p>
-          )}
-
-          {modeInfo?.isBelowRecommended && (
-            <p className="setup-hint">
-              Your PC can run Smallbird, but your hardware is below our recommended configuration. Real-time
-              transcription may be slower.
-            </p>
-          )}
-
-          <div className="agent-mode-toggle">
-            {MODE_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                className={`agent-mode-tab${modeInfo?.mode === opt.value ? " active" : ""}`}
-                onClick={() => handleSelectMode(opt.value)}
-                disabled={busy}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-          {busy && (
-            <p className="setup-hint">Applying — this restarts the local document search service and can take up to a minute...</p>
-          )}
-          {!busy && modeInfo && (
-            <p className="setup-hint">{MODE_OPTIONS.find((o) => o.value === modeInfo.mode)?.description}</p>
-          )}
-
-          {modeInfo && (
-            <>
-              <button
-                className="link-button"
-                style={{ color: "var(--text-muted)" }}
-                onClick={() => setShowAdvanced((v) => !v)}
-              >
-                {showAdvanced ? "Hide" : "Show"} advanced details
-              </button>
-              {showAdvanced && (
-                <ul className="setup-hint">
-                  <li>STT threads: {modeInfo.effectiveConfig.sttNumThreads}</li>
-                  <li>RAG top-K: {modeInfo.effectiveConfig.ragTopK}</li>
-                  <li>RAG context budget: {modeInfo.effectiveConfig.ragMaxContextChars} chars</li>
-                  <li>RAG retrieval timeout: {modeInfo.effectiveConfig.ragRetrievalTimeoutMs}ms</li>
-                </ul>
-              )}
-            </>
-          )}
-
-          <div className="popover-footer">
-            <Button variant="ghost" onClick={onClose} disabled={busy}>
-              Close
-            </Button>
-          </div>
-        </div>
+        ))}
       </div>
-    </div>
+      {busy && (
+        <p className="setup-hint">
+          Applying — this restarts the local document search service and can take up to a minute...
+        </p>
+      )}
+      {!busy && modeInfo && (
+        <p className="setup-hint">{MODE_OPTIONS.find((o) => o.value === modeInfo.mode)?.description}</p>
+      )}
+
+      {modeInfo && (
+        <>
+          <button
+            className="link-button"
+            style={{ color: "var(--text-muted)" }}
+            onClick={() => setShowAdvanced((v) => !v)}
+          >
+            {showAdvanced ? "Hide" : "Show"} advanced details
+          </button>
+          {showAdvanced && (
+            <ul className="setup-hint">
+              <li>STT threads: {modeInfo.effectiveConfig.sttNumThreads}</li>
+              <li>RAG top-K: {modeInfo.effectiveConfig.ragTopK}</li>
+              <li>RAG context budget: {modeInfo.effectiveConfig.ragMaxContextChars} chars</li>
+              <li>RAG retrieval timeout: {modeInfo.effectiveConfig.ragRetrievalTimeoutMs}ms</li>
+            </ul>
+          )}
+        </>
+      )}
+    </>
   );
 }

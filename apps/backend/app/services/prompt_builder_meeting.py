@@ -63,6 +63,15 @@ _LENGTH_INSTRUCTIONS = {
     "detailed": "Ceiling: roughly 120 words — only use the extra room if the question genuinely needs it.",
 }
 
+_HUMANIZATION_INSTRUCTIONS = {
+    "natural": "Sound like a real colleague talking, not a generated answer.",
+    "conversational": (
+        "Lean more conversational: contractions are fine, a touch of personality is fine, "
+        "as if quietly messaging a colleague rather than reciting a rehearsed answer."
+    ),
+    "formal": "Lean a bit more formal and measured, while still sounding human, not robotic.",
+}
+
 
 def _context_blocks(request: MeetingAskRequest) -> List[str]:
     blocks: List[str] = []
@@ -89,7 +98,8 @@ def build_ask_messages(request: MeetingAskRequest) -> List[LLMMessage]:
         parts.append("CONTEXT:\n" + "\n\n".join(blocks))
     parts.append(f"The user asks:\n{request.question}")
     parts.append(
-        f"{_LENGTH_INSTRUCTIONS[request.answer_length]} {_STYLE_INSTRUCTIONS[request.response_style]}\n"
+        f"{_LENGTH_INSTRUCTIONS[request.answer_length]} {_STYLE_INSTRUCTIONS[request.response_style]} "
+        f"{_HUMANIZATION_INSTRUCTIONS[request.humanization]}\n"
         "Reply with only the answer — no headers, no restating the question."
     )
     messages.append(LLMMessage("user", "\n\n---\n\n".join(parts)))

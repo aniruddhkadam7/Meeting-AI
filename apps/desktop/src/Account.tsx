@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Button } from "./ui";
+import { LiquidButton } from "@/components/ui/liquid-glass-button";
 
 interface SessionInfo {
   userId: string;
@@ -93,6 +94,11 @@ export function Account({ onClose }: { onClose: () => void }) {
           <button className="modal-close-btn" onClick={onClose} title="Close" aria-label="Close">
             ✕
           </button>
+        </div>
+
+        {/* TEMP smoke test for liquid-glass-button integration — remove after visual check */}
+        <div style={{ padding: "12px", display: "flex", justifyContent: "center" }}>
+          <LiquidButton size="sm">Liquid Glass Test</LiquidButton>
         </div>
 
         <div className="popover-body">

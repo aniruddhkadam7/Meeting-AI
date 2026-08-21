@@ -98,9 +98,16 @@ export function HeaderDropdown({
 
   useLayoutEffect(() => {
     const handlePointerDown = (e: MouseEvent) => {
-      if (outerRef.current && !outerRef.current.contains(e.target as Node)) {
-        onClose();
-      }
+      const target = e.target as Node;
+      if (outerRef.current && outerRef.current.contains(target)) return;
+      // A click on the anchor button that owns this dropdown is handled by
+      // that button's own onClick (which toggles the popover shut) — if
+      // this capture-phase listener also called onClose() here, mousedown
+      // would close it a beat before the click's toggle logic reopens it,
+      // so the second tap on the button re-opened the dropdown instead of
+      // closing it.
+      if (outerRef.current?.parentElement?.contains(target)) return;
+      onClose();
     };
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();

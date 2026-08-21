@@ -9,6 +9,7 @@ import {
   type OverlaySize,
   type ResponseStyle,
 } from "./overlaySettings";
+import { Select } from "./ui";
 
 interface Props {
   settings: OverlaySettings;
@@ -64,17 +65,20 @@ export function OverlaySettingsPanel({ settings, onChange, onClose, captureExclu
           />
         </label>
 
-        <label className="overlay-settings-row">
+        <div className="overlay-settings-row">
           <span>Overlay size</span>
-          <select
+          <Select
+            className="select-overlay"
             value={settings.size}
-            onChange={(e) => changeSize(e.target.value as OverlaySize)}
-          >
-            <option value="small">Small</option>
-            <option value="medium">Medium</option>
-            <option value="large">Large</option>
-          </select>
-        </label>
+            onChange={changeSize}
+            aria-label="Overlay size"
+            options={[
+              { value: "small", label: "Small" },
+              { value: "medium", label: "Medium" },
+              { value: "large", label: "Large" },
+            ]}
+          />
+        </div>
 
         <label className="overlay-settings-row">
           <span>Font size</span>
@@ -89,16 +93,19 @@ export function OverlaySettingsPanel({ settings, onChange, onClose, captureExclu
           <span className="overlay-settings-value">{settings.fontSize}px</span>
         </label>
 
-        <label className="overlay-settings-row">
+        <div className="overlay-settings-row">
           <span>Text density</span>
-          <select
+          <Select
+            className="select-overlay"
             value={settings.density}
-            onChange={(e) => set("density", e.target.value as OverlayDensity)}
-          >
-            <option value="compact">Compact</option>
-            <option value="comfortable">Comfortable</option>
-          </select>
-        </label>
+            onChange={(v: OverlayDensity) => set("density", v)}
+            aria-label="Text density"
+            options={[
+              { value: "compact", label: "Compact" },
+              { value: "comfortable", label: "Comfortable" },
+            ]}
+          />
+        </div>
 
         <label className="overlay-settings-row overlay-settings-checkbox">
           <input
@@ -127,29 +134,35 @@ export function OverlaySettingsPanel({ settings, onChange, onClose, captureExclu
           <span>Auto AI — send a question automatically once you stop talking</span>
         </label>
 
-        <label className="overlay-settings-row">
+        <div className="overlay-settings-row">
           <span>Answer length</span>
-          <select
+          <Select
+            className="select-overlay"
             value={settings.answerLength}
-            onChange={(e) => set("answerLength", e.target.value as AnswerLength)}
-          >
-            <option value="brief">Brief (1-3 sentences)</option>
-            <option value="default">Default (~50-120 words)</option>
-            <option value="detailed">Detailed</option>
-          </select>
-        </label>
+            onChange={(v: AnswerLength) => set("answerLength", v)}
+            aria-label="Answer length"
+            options={[
+              { value: "brief", label: "Brief (1-3 sentences)" },
+              { value: "default", label: "Default (~50-120 words)" },
+              { value: "detailed", label: "Detailed" },
+            ]}
+          />
+        </div>
 
-        <label className="overlay-settings-row">
+        <div className="overlay-settings-row">
           <span>Response style</span>
-          <select
+          <Select
+            className="select-overlay"
             value={settings.responseStyle}
-            onChange={(e) => set("responseStyle", e.target.value as ResponseStyle)}
-          >
-            <option value="natural">Natural</option>
-            <option value="technical">Technical</option>
-            <option value="concise">Concise</option>
-          </select>
-        </label>
+            onChange={(v: ResponseStyle) => set("responseStyle", v)}
+            aria-label="Response style"
+            options={[
+              { value: "natural", label: "Natural" },
+              { value: "technical", label: "Technical" },
+              { value: "concise", label: "Concise" },
+            ]}
+          />
+        </div>
 
         <label className="overlay-settings-row overlay-settings-column">
           <span>Role (optional)</span>

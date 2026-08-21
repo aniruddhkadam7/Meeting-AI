@@ -183,6 +183,11 @@ pub struct AskRequest {
     pub english_level: String,
     /// "natural" | "conversational" | "formal" — validated backend-side.
     pub humanization: String,
+    /// "openai" | "anthropic" | "gemini" — the header dropdown's chosen model provider.
+    /// `None` keeps the server-configured LLM_PROVIDER default (see
+    /// apps/backend/app/schemas/ask.py's AskRequest.llm_provider).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm_provider: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -224,79 +229,6 @@ pub struct SetupAnalysisResponse {
     pub candidate_highlights: Vec<String>,
 }
 
-/// Wire types for Sales Mode — matches `apps/backend/app/schemas/sales.py`.
-#[derive(Debug, Clone, Serialize)]
-pub struct SalesConversationTurn {
-    pub question: String,
-    pub answer: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct SalesRetrievedChunk {
-    pub text: String,
-    pub source_filename: String,
-    pub document_type: String,
-    pub score: f64,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct SalesAskRequest {
-    pub question: String,
-    pub conversation_history: Vec<SalesConversationTurn>,
-    pub retrieved_context: Vec<SalesRetrievedChunk>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub customer_name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub company_name: Option<String>,
-    pub call_stage: String,
-    pub answer_length: String,
-    pub response_style: String,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct SalesAskResponse {
-    pub answer: String,
-    pub latency_ms: f64,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct SalesTurnIn {
-    pub speaker: String,
-    pub text: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct SalesSummaryRequest {
-    pub turns: Vec<SalesTurnIn>,
-    pub requirements: Vec<String>,
-    pub objections: Vec<String>,
-    pub commitments: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub customer_name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub company_name: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
-pub struct SalesCallSummary {
-    #[serde(default)]
-    pub summary: String,
-    #[serde(default)]
-    pub key_requirements: Vec<String>,
-    #[serde(default)]
-    pub key_objections: Vec<String>,
-    #[serde(default)]
-    pub commitments: Vec<String>,
-    #[serde(default)]
-    pub action_items: Vec<String>,
-    #[serde(default)]
-    pub next_steps: Vec<String>,
-    #[serde(default)]
-    pub buying_intent: String,
-    #[serde(default)]
-    pub message: String,
-}
-
 /// Wire types for Meeting Mode — matches `apps/backend/app/schemas/meeting.py`.
 #[derive(Debug, Clone, Serialize)]
 pub struct MeetingConversationTurn {
@@ -323,6 +255,12 @@ pub struct MeetingAskRequest {
     pub participants: Option<String>,
     pub answer_length: String,
     pub response_style: String,
+    pub humanization: String,
+    /// "openai" | "anthropic" | "gemini" — the header dropdown's chosen model provider.
+    /// `None` keeps the server-configured LLM_PROVIDER default (see
+    /// apps/backend/app/schemas/meeting.py's MeetingAskRequest.llm_provider).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm_provider: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -361,144 +299,6 @@ pub struct MeetingSummary {
     pub action_items: Vec<String>,
     #[serde(default)]
     pub next_steps: Vec<String>,
-    #[serde(default)]
-    pub message: String,
-}
-
-/// Wire types for Custom Agents — matches
-/// `apps/backend/app/schemas/agent_ask.py`. One generic shape shared by
-/// every predefined role and every fully custom agent, unlike Sales/
-/// Consulting Mode's own per-mode request struct above.
-#[derive(Debug, Clone, Serialize)]
-pub struct AgentConversationTurn {
-    pub question: String,
-    pub answer: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct AgentRetrievedChunk {
-    pub text: String,
-    pub source_filename: String,
-    pub document_type: String,
-    pub score: f64,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct AgentPersonalization {
-    pub answer_length: String,
-    pub response_style: String,
-    pub answer_format: String,
-    pub live_assistance: String,
-}
-
-impl Default for AgentPersonalization {
-    fn default() -> Self {
-        Self {
-            answer_length: "adaptive".to_string(),
-            response_style: "natural".to_string(),
-            answer_format: "adaptive".to_string(),
-            live_assistance: "manual".to_string(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct AgentAskRequest {
-    pub agent_id: String,
-    pub agent_name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub base_role: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub custom_instructions: Option<String>,
-    pub personalization: AgentPersonalization,
-    pub question: String,
-    pub conversation_history: Vec<AgentConversationTurn>,
-    pub retrieved_context: Vec<AgentRetrievedChunk>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct AgentAskResponse {
-    pub answer: String,
-    pub latency_ms: f64,
-}
-
-/// Wire types for Consulting Mode — matches
-/// `apps/backend/app/schemas/consulting.py`.
-#[derive(Debug, Clone, Serialize)]
-pub struct ConsultingConversationTurn {
-    pub question: String,
-    pub answer: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct ConsultingRetrievedChunk {
-    pub text: String,
-    pub source_filename: String,
-    pub document_type: String,
-    pub score: f64,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct ConsultingAskRequest {
-    pub question: String,
-    pub conversation_history: Vec<ConsultingConversationTurn>,
-    pub retrieved_context: Vec<ConsultingRetrievedChunk>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub client_name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub project_name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub engagement_context: Option<String>,
-    pub answer_length: String,
-    pub response_style: String,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct ConsultingAskResponse {
-    pub answer: String,
-    pub latency_ms: f64,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct ConsultingTurnIn {
-    pub speaker: String,
-    pub text: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct ConsultingSummaryRequest {
-    pub turns: Vec<ConsultingTurnIn>,
-    pub risks: Vec<String>,
-    pub assumptions: Vec<String>,
-    pub decisions: Vec<String>,
-    pub dependencies: Vec<String>,
-    pub action_items: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub client_name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub project_name: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
-pub struct ConsultingNote {
-    #[serde(default)]
-    pub summary: String,
-    #[serde(default)]
-    pub key_points: Vec<String>,
-    #[serde(default)]
-    pub risks: Vec<String>,
-    #[serde(default)]
-    pub assumptions: Vec<String>,
-    #[serde(default)]
-    pub decisions: Vec<String>,
-    #[serde(default)]
-    pub dependencies: Vec<String>,
-    #[serde(default)]
-    pub action_items: Vec<String>,
-    #[serde(default)]
-    pub open_questions: Vec<String>,
     #[serde(default)]
     pub message: String,
 }

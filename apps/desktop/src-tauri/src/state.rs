@@ -5,43 +5,21 @@ use crate::audio::{PauseSignal, StopSignal};
 use crate::rag::RagServiceHandle;
 use crate::transcript::{RecordingState, TranscriptManager};
 
-/// One item tracked live during a Sales call or Consulting session (a
-/// requirement, objection, commitment, risk, assumption, decision,
-/// dependency, or action item) — just the text; the list it lives in
-/// (`SalesSessionState`/`ConsultingSessionState`) carries the kind.
+/// One item tracked live during a Meeting session (a key point, decision, or
+/// action item) — just the text; the list it lives in (`MeetingSessionState`)
+/// carries the kind.
 #[derive(Debug, Clone, Default, serde::Serialize)]
-pub struct SalesTrackedItem {
+pub struct TrackedItem {
     pub text: String,
-}
-
-/// In-memory state for the currently-open Sales call, tracked live from the
-/// overlay. Reset by `clear_sales_session` when a new call starts.
-#[derive(Debug, Default)]
-pub struct SalesSessionState {
-    pub requirements: Vec<SalesTrackedItem>,
-    pub objections: Vec<SalesTrackedItem>,
-    pub commitments: Vec<SalesTrackedItem>,
-}
-
-/// In-memory state for the currently-open Consulting session, tracked live
-/// from the overlay. Reset by `clear_consulting_session` when a new session
-/// starts.
-#[derive(Debug, Default)]
-pub struct ConsultingSessionState {
-    pub risks: Vec<SalesTrackedItem>,
-    pub assumptions: Vec<SalesTrackedItem>,
-    pub decisions: Vec<SalesTrackedItem>,
-    pub dependencies: Vec<SalesTrackedItem>,
-    pub action_items: Vec<SalesTrackedItem>,
 }
 
 /// In-memory state for the currently-open Meeting session, tracked live from
 /// the overlay. Reset by `clear_meeting_session` when a new meeting starts.
 #[derive(Debug, Default)]
 pub struct MeetingSessionState {
-    pub key_points: Vec<SalesTrackedItem>,
-    pub decisions: Vec<SalesTrackedItem>,
-    pub action_items: Vec<SalesTrackedItem>,
+    pub key_points: Vec<TrackedItem>,
+    pub decisions: Vec<TrackedItem>,
+    pub action_items: Vec<TrackedItem>,
 }
 
 /// Handles for an in-progress recording session, held so Tauri commands can stop it
@@ -78,12 +56,6 @@ pub struct AppState {
     /// commands report a clear "unavailable" error in that case rather than
     /// panicking.
     pub rag_service: Mutex<Option<RagServiceHandle>>,
-    /// Live-tracked requirements/objections/commitments for the currently
-    /// open Sales call. See `sales_mode::commands`.
-    pub sales_session: Mutex<SalesSessionState>,
-    /// Live-tracked risks/assumptions/decisions/dependencies/action items for
-    /// the currently open Consulting session. See `consulting_mode::commands`.
-    pub consulting_session: Mutex<ConsultingSessionState>,
     /// Live-tracked key points/decisions/action items for the currently open
     /// Meeting session. See `meeting_mode::commands`.
     pub meeting_session: Mutex<MeetingSessionState>,

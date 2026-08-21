@@ -7,6 +7,7 @@ import {
   type OverlayDensity,
   type OverlaySize,
 } from "./meetingOverlaySettings";
+import { Select } from "./ui";
 
 interface Props {
   settings: MeetingOverlaySettings;
@@ -61,14 +62,20 @@ export function MeetingOverlaySettingsPanel({ settings, onChange, onClose, captu
           />
         </label>
 
-        <label className="overlay-settings-row">
+        <div className="overlay-settings-row">
           <span>Overlay size</span>
-          <select value={settings.size} onChange={(e) => changeSize(e.target.value as OverlaySize)}>
-            <option value="small">Small</option>
-            <option value="medium">Medium</option>
-            <option value="large">Large</option>
-          </select>
-        </label>
+          <Select
+            className="select-overlay"
+            value={settings.size}
+            onChange={changeSize}
+            aria-label="Overlay size"
+            options={[
+              { value: "small", label: "Small" },
+              { value: "medium", label: "Medium" },
+              { value: "large", label: "Large" },
+            ]}
+          />
+        </div>
 
         <label className="overlay-settings-row">
           <span>Font size</span>
@@ -83,16 +90,19 @@ export function MeetingOverlaySettingsPanel({ settings, onChange, onClose, captu
           <span className="overlay-settings-value">{settings.fontSize}px</span>
         </label>
 
-        <label className="overlay-settings-row">
+        <div className="overlay-settings-row">
           <span>Text density</span>
-          <select
+          <Select
+            className="select-overlay"
             value={settings.density}
-            onChange={(e) => set("density", e.target.value as OverlayDensity)}
-          >
-            <option value="compact">Compact</option>
-            <option value="comfortable">Comfortable</option>
-          </select>
-        </label>
+            onChange={(v: OverlayDensity) => set("density", v)}
+            aria-label="Text density"
+            options={[
+              { value: "compact", label: "Compact" },
+              { value: "comfortable", label: "Comfortable" },
+            ]}
+          />
+        </div>
 
         <label className="overlay-settings-row overlay-settings-checkbox">
           <input

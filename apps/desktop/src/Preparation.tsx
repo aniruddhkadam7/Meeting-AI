@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { readFile } from "@tauri-apps/plugin-fs";
 import type { DocumentMetadata, DocumentType, KnowledgeBaseStatus } from "./types";
-import { Badge, Button, Card, EmptyState, StatusDot } from "./ui";
+import { Badge, Button, Card, EmptyState, Select, StatusDot } from "./ui";
 
 const DOC_STATUS_TONE: Record<string, "success" | "danger" | "warning" | "neutral"> = {
   READY: "success",
@@ -163,13 +163,12 @@ export function Preparation({ role, onRoleChange, company, onCompanyChange }: Pr
         <div className="upload-dropzone">
           <span className="upload-dropzone-icon">📄</span>
           <div className="upload-row">
-            <select value={uploadType} onChange={(e) => setUploadType(e.target.value as DocumentType)}>
-              {DOCUMENT_TYPES.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
+            <Select
+              value={uploadType}
+              onChange={(v: DocumentType) => setUploadType(v)}
+              aria-label="Document type"
+              options={DOCUMENT_TYPES}
+            />
             <Button variant="primary" onClick={uploadDocument} disabled={uploading}>
               {uploading ? "Processing…" : "Choose File"}
             </Button>

@@ -9,7 +9,7 @@ pub const OVERLAY_WINDOW_LABEL: &str = "interview-overlay";
 pub const MAIN_WINDOW_LABEL: &str = "main";
 
 // Fallback size used only if the primary monitor can't be queried (see
-// `size_and_center` below, which normally computes a square size as a
+// `dock_below_main_window` below, which normally computes a square size as a
 // fraction of the actual screen instead of a fixed constant).
 const OVERLAY_FALLBACK_SIDE: f64 = 560.0;
 
@@ -18,23 +18,26 @@ pub struct OverlayCaptureStatus {
     pub excluded: bool,
 }
 
-/// Creates the overlay window if it doesn't already exist, positions it
-/// bottom-right of the primary monitor, applies capture exclusion, and shows
-/// it. If the window already exists, just shows/focuses it. Also hides the
-/// main application window so Interview Mode is the only thing visible, per
-/// the requirement that the large Record/Prepare dashboard must never be
-/// what's on screen while Interview Mode is active.
+/// Creates the overlay window if it doesn't already exist, docks it where the
+/// main header window currently sits, applies capture exclusion, shows it,
+/// then hides the main window — so Interview Mode is the only thing visible,
+/// per the requirement that the large Record/Prepare dashboard must never be
+/// what's on screen while Interview Mode is active. If the window already
+/// exists, just re-docks (the header may have moved/resized since last time)
+/// and shows/focuses it.
 ///
 /// The main window is hidden LAST, only once the overlay has actually been
-/// built/positioned/shown — not first. Hiding it first (the original order)
-/// left a visible gap between the main window vanishing and the overlay
-/// actually appearing (webview creation + the capture-exclusion IOCTL call
-/// both take real time on a window being created for the first time), which
-/// read as the whole app having closed/crashed rather than a fast transition
-/// to Interview Mode.
+/// docked/shown — not first. Hiding it first left a visible gap between the
+/// main window vanishing and the overlay actually appearing (webview
+/// creation + the capture-exclusion IOCTL call both take real time on a
+/// window being created for the first time), which read as the whole app
+/// having closed/crashed rather than a fast transition to Interview Mode.
+/// This also means the dock position is computed from the main window while
+/// it's still visible/on-screen, before it's hidden.
 pub fn show_overlay_window(app: &AppHandle) -> Result<OverlayCaptureStatus, String> {
     let excluded = if let Some(existing) = app.get_webview_window(OVERLAY_WINDOW_LABEL) {
         log::info!("Interview Mode: reusing existing overlay window");
+        dock_below_main_window(app, &existing, false);
         existing.show().map_err(|e| e.to_string())?;
         existing.set_focus().map_err(|e| e.to_string())?;
         let excluded = windows_capture_protection::enable_capture_exclusion(&existing).is_ok();
@@ -43,7 +46,7 @@ pub fn show_overlay_window(app: &AppHandle) -> Result<OverlayCaptureStatus, Stri
     } else {
         log::info!("Interview Mode: creating new overlay window");
         let window = build_overlay_window(app)?;
-        size_and_center(&window);
+        dock_below_main_window(app, &window, true);
 
         let excluded = windows_capture_protection::enable_capture_exclusion(&window).is_ok();
         if excluded {
@@ -105,10 +108,10 @@ pub fn set_overlay_always_on_top(app: &AppHandle, enabled: bool) -> Result<(), S
 }
 
 /// Resizes the overlay to a square fraction of the primary monitor's shorter
-/// dimension, re-centering it — same math as `size_and_center`'s default
-/// (`DEFAULT_SIZE_FRACTION`), just parameterized by the Settings panel's
-/// Small/Medium/Large choice so the window itself changes, not only its CSS
-/// padding.
+/// dimension, then re-docks it below the main window — same math as
+/// `dock_below_main_window`'s default (`DEFAULT_SIZE_FRACTION`), just
+/// parameterized by the Settings panel's Small/Medium/Large choice so the
+/// window itself changes, not only its CSS padding.
 pub fn resize_overlay(app: &AppHandle, fraction: f64) -> Result<(), String> {
     let Some(window) = app.get_webview_window(OVERLAY_WINDOW_LABEL) else {
         return Ok(());
@@ -118,18 +121,12 @@ pub fn resize_overlay(app: &AppHandle, fraction: f64) -> Result<(), String> {
     };
     let scale = monitor.scale_factor();
     let monitor_size = monitor.size().to_logical::<f64>(scale);
-    let monitor_pos = monitor.position().to_logical::<f64>(scale);
-
     let side = (monitor_size.width.min(monitor_size.height) * fraction).max(320.0);
-    let x = monitor_pos.x + (monitor_size.width - side) / 2.0;
-    let y = monitor_pos.y + (monitor_size.height - side) / 2.0;
 
     window
         .set_size(LogicalSize::new(side, side))
         .map_err(|e| e.to_string())?;
-    window
-        .set_position(LogicalPosition::new(x, y))
-        .map_err(|e| e.to_string())?;
+    dock_below_main_window(app, &window, false);
     Ok(())
 }
 
@@ -184,23 +181,68 @@ fn build_overlay_window(app: &AppHandle) -> Result<WebviewWindow, String> {
 /// bare `0.75` so the two don't silently drift apart.
 const DEFAULT_SIZE_FRACTION: f64 = 0.75;
 
-/// Sizes the overlay to a square roughly three-quarters of the primary
-/// monitor's shorter dimension and centers it. Square rather than a wide/short
-/// rectangle, per explicit feedback that the wide aspect ratio looked wrong.
-/// Falls back to a fixed size if the monitor can't be queried.
-fn size_and_center(window: &WebviewWindow) {
+/// Gap between the main window's bottom edge and the overlay's top edge, so
+/// the overlay reads as its own attached panel rather than touching the
+/// header edge-to-edge — same idea as `HeaderDropdown.tsx`'s `GAP_ABOVE` for
+/// the header's own in-window popovers.
+const DOCK_GAP: f64 = 8.0;
+
+/// Docks the overlay directly beneath the main header window, aligned to the
+/// header's left edge. If `apply_default_size` is set (only true right after
+/// `build_overlay_window` creates a brand-new window), also sizes it to a
+/// square roughly three-quarters of the primary monitor's shorter dimension
+/// first — square rather than a wide/short rectangle, per explicit feedback
+/// that the wide aspect ratio looked wrong. `resize_overlay` sets its own
+/// explicit size before calling this purely for repositioning, so it always
+/// passes `false` to avoid overwriting that.
+///
+/// Falls back to centering on the primary monitor if the main window can't be
+/// found/queried (should not happen in practice — the main window always
+/// exists — but keeps this from panicking if it somehow doesn't).
+fn dock_below_main_window(app: &AppHandle, window: &WebviewWindow, apply_default_size: bool) {
+    if apply_default_size {
+        if let Ok(Some(monitor)) = window.primary_monitor() {
+            let monitor_scale = monitor.scale_factor();
+            let monitor_size = monitor.size().to_logical::<f64>(monitor_scale);
+            let side = (monitor_size.width.min(monitor_size.height) * DEFAULT_SIZE_FRACTION).max(360.0);
+            let _ = window.set_size(LogicalSize::new(side, side));
+        }
+    }
+
+    let Some(main) = app.get_webview_window(MAIN_WINDOW_LABEL) else {
+        center_on_primary_monitor(window);
+        return;
+    };
+    let Ok(main_pos) = main.outer_position() else {
+        center_on_primary_monitor(window);
+        return;
+    };
+    let Ok(main_size) = main.outer_size() else {
+        center_on_primary_monitor(window);
+        return;
+    };
+    let scale = main.scale_factor().unwrap_or(1.0);
+    let main_pos = main_pos.to_logical::<f64>(scale);
+    let main_size = main_size.to_logical::<f64>(scale);
+
+    let x = main_pos.x;
+    let y = main_pos.y + main_size.height + DOCK_GAP;
+    let _ = window.set_position(LogicalPosition::new(x, y));
+}
+
+fn center_on_primary_monitor(window: &WebviewWindow) {
     let Ok(Some(monitor)) = window.primary_monitor() else {
         return;
     };
     let scale = monitor.scale_factor();
     let monitor_size = monitor.size().to_logical::<f64>(scale);
     let monitor_pos = monitor.position().to_logical::<f64>(scale);
+    let Ok(size) = window.inner_size() else {
+        return;
+    };
+    let size = size.to_logical::<f64>(scale);
 
-    let side = (monitor_size.width.min(monitor_size.height) * DEFAULT_SIZE_FRACTION).max(360.0);
-
-    let x = monitor_pos.x + (monitor_size.width - side) / 2.0;
-    let y = monitor_pos.y + (monitor_size.height - side) / 2.0;
-
-    let _ = window.set_size(LogicalSize::new(side, side));
+    let x = monitor_pos.x + (monitor_size.width - size.width) / 2.0;
+    let y = monitor_pos.y + (monitor_size.height - size.height) / 2.0;
     let _ = window.set_position(LogicalPosition::new(x, y));
 }

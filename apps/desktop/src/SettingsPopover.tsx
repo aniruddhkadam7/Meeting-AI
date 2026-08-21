@@ -1,38 +1,40 @@
 import { useState } from "react";
 import { PerformancePanel } from "./PerformancePanel";
+import { PersonalizationPanel } from "./PersonalizationPanel";
+import { AttachedDocumentsPanel } from "./AttachedDocumentsPanel";
+import { InterviewHistory } from "./InterviewHistory";
+import { MeetingHistory } from "./MeetingHistory";
+import type { Mode } from "./App";
 
-type SettingsSection =
-  | "GENERAL"
-  | "PERFORMANCE"
-  | "AUDIO"
-  | "NOTIFICATIONS"
-  | "CONTEXT"
-  | "PRIVACY"
-  | "ABOUT";
+type SettingsSection = "SESSIONS" | "PERSONALIZATION" | "PERFORMANCE" | "CONTEXT" | "PRIVACY" | "ABOUT";
 
 const SECTIONS: { key: SettingsSection; label: string }[] = [
-  { key: "GENERAL", label: "General" },
+  { key: "SESSIONS", label: "Sessions" },
+  { key: "PERSONALIZATION", label: "Personalization" },
   { key: "PERFORMANCE", label: "Performance" },
-  { key: "AUDIO", label: "Audio & Microphone" },
-  { key: "NOTIFICATIONS", label: "Notifications" },
   { key: "CONTEXT", label: "Context / Documents" },
   { key: "PRIVACY", label: "Privacy" },
   { key: "ABOUT", label: "About / Version" },
 ];
 
-/// Compact Settings popover reached from the header's gear icon. Performance
-/// opens the existing PerformancePanel popover as its own layered overlay
-/// (same .popover-overlay/.popover shell as this one) rather than inlining
-/// its body, since PerformancePanel already owns its data-fetching and
-/// write-action state independently. Other sections are placeholders — no
-/// existing screens to reuse for them yet.
-export function SettingsPopover({ onClose }: { onClose: () => void }) {
-  const [showPerformance, setShowPerformance] = useState(false);
-  const [section, setSection] = useState<SettingsSection>("GENERAL");
+interface Props {
+  onClose: () => void;
+  mode: Mode;
+  historyRefreshKey: number;
+}
 
-  if (showPerformance) {
-    return <PerformancePanel onClose={() => setShowPerformance(false)} />;
-  }
+/// Settings popover reached from the header's gear icon. Every section
+/// (including Performance) renders inline in settings-popover-content
+/// alongside the nav rail — Performance used to swap out the whole popover
+/// for its own separate shell, which hid the nav entirely with no way back
+/// to another section except closing and reopening Settings. Only sections
+/// with real content are listed here — General/Audio/Notifications were
+/// placeholder stubs and have been dropped. Sessions (past Interview/
+/// Meeting history) and Personalization (answer tone/length/style) live
+/// here rather than as separate header buttons, alongside the app's other
+/// settings.
+export function SettingsPopover({ onClose, mode, historyRefreshKey }: Props) {
+  const [section, setSection] = useState<SettingsSection>("SESSIONS");
 
   return (
     <div className="popover-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -50,7 +52,7 @@ export function SettingsPopover({ onClose }: { onClose: () => void }) {
               <button
                 key={s.key}
                 className={["workspace-nav-item", section === s.key ? "active" : ""].filter(Boolean).join(" ")}
-                onClick={() => (s.key === "PERFORMANCE" ? setShowPerformance(true) : setSection(s.key))}
+                onClick={() => setSection(s.key)}
               >
                 {s.label}
               </button>
@@ -58,15 +60,15 @@ export function SettingsPopover({ onClose }: { onClose: () => void }) {
           </div>
 
           <div className="settings-popover-content">
-            {section === "GENERAL" && <p className="setup-hint">General settings are coming soon.</p>}
-            {section === "AUDIO" && <p className="setup-hint">Audio & microphone settings are coming soon.</p>}
-            {section === "NOTIFICATIONS" && <p className="setup-hint">Notification settings are coming soon.</p>}
-            {section === "CONTEXT" && (
-              <p className="setup-hint">
-                Manage documents attached to Interview and Meeting sessions from the Context (📎) button in the
-                header.
-              </p>
-            )}
+            {section === "SESSIONS" &&
+              (mode === "INTERVIEW" ? (
+                <InterviewHistory refreshKey={historyRefreshKey} />
+              ) : (
+                <MeetingHistory refreshKey={historyRefreshKey} />
+              ))}
+            {section === "PERSONALIZATION" && <PersonalizationPanel />}
+            {section === "PERFORMANCE" && <PerformancePanel />}
+            {section === "CONTEXT" && <AttachedDocumentsPanel />}
             {section === "PRIVACY" && (
               <p className="setup-hint">
                 Smallbird runs speech-to-text and document search locally on this device. Audio and documents are

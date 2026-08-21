@@ -4,12 +4,10 @@ use futures_util::StreamExt;
 
 use super::config::backend_url;
 use super::types::{
-    AgentAskRequest, AnalysisProgressEvent, AskRequest, AskResponse, ConsultingAskRequest,
-    ConsultingAskResponse, ConsultingNote, ConsultingSummaryRequest, ErrorResponse,
-    InterviewAnalysisRequest, MeetingAskRequest, MeetingSummary,
-    MeetingSummaryRequest, NoteSummary, NotesAskRequest, NotesAskResponse, NotesSummaryRequest,
-    OverallInterviewAnalysis, SalesAskRequest, SalesAskResponse, SalesCallSummary,
-    SalesSummaryRequest, SetupAnalysisRequest, SetupAnalysisResponse,
+    AnalysisProgressEvent, AskRequest, AskResponse, ErrorResponse, InterviewAnalysisRequest,
+    MeetingAskRequest, MeetingSummary, MeetingSummaryRequest, NoteSummary, NotesAskRequest,
+    NotesAskResponse, NotesSummaryRequest, OverallInterviewAnalysis, SetupAnalysisRequest,
+    SetupAnalysisResponse,
 };
 
 pub struct BackendClient {
@@ -242,125 +240,8 @@ impl BackendClient {
         }
     }
 
-    /// Sales Mode's live single-question flow, streaming the suggestion text
-    /// incrementally via `on_delta`. Mirrors `ask_stream` above.
-    pub async fn sales_ask_stream<F>(&self, request: &SalesAskRequest, mut on_delta: F) -> Result<String, String>
-    where
-        F: FnMut(&str),
-    {
-        let url = format!("{}/api/v1/sales/ask/stream", self.base_url);
-        let response = self
-            .http
-            .post(&url)
-            .timeout(Duration::from_secs(60))
-            .json(request)
-            .send()
-            .await
-            .map_err(|e| format!("failed to reach backend: {e}"))?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let body_text = response.text().await.unwrap_or_default();
-            if let Ok(err) = serde_json::from_str::<ErrorResponse>(&body_text) {
-                return Err(format!("{} ({})", err.error.message, err.error.code));
-            }
-            return Err(format!("backend returned {status}: {body_text}"));
-        }
-
-        let mut stream = response.bytes_stream();
-        let mut buffer = String::new();
-        let mut full_answer = String::new();
-
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|e| format!("stream read error: {e}"))?;
-            buffer.push_str(&String::from_utf8_lossy(&chunk));
-
-            for (event_name, data) in drain_raw_sse_frames(&mut buffer) {
-                if event_name.as_deref() == Some("delta") && !data.is_empty() {
-                    full_answer.push_str(&data);
-                    on_delta(&data);
-                }
-            }
-        }
-
-        Ok(full_answer)
-    }
-
-    /// Custom Agents' live single-question flow — the one generic ask
-    /// endpoint shared by every predefined role and every fully custom
-    /// agent. Mirrors `sales_ask_stream` above exactly (same SSE frame
-    /// parser, same delta/full-answer accumulation).
-    pub async fn agent_ask_stream<F>(&self, request: &AgentAskRequest, mut on_delta: F) -> Result<String, String>
-    where
-        F: FnMut(&str),
-    {
-        let url = format!("{}/api/v1/agents/ask/stream", self.base_url);
-        let response = self
-            .http
-            .post(&url)
-            .timeout(Duration::from_secs(60))
-            .json(request)
-            .send()
-            .await
-            .map_err(|e| format!("failed to reach backend: {e}"))?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let body_text = response.text().await.unwrap_or_default();
-            if let Ok(err) = serde_json::from_str::<ErrorResponse>(&body_text) {
-                return Err(format!("{} ({})", err.error.message, err.error.code));
-            }
-            return Err(format!("backend returned {status}: {body_text}"));
-        }
-
-        let mut stream = response.bytes_stream();
-        let mut buffer = String::new();
-        let mut full_answer = String::new();
-
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|e| format!("stream read error: {e}"))?;
-            buffer.push_str(&String::from_utf8_lossy(&chunk));
-
-            for (event_name, data) in drain_raw_sse_frames(&mut buffer) {
-                if event_name.as_deref() == Some("delta") && !data.is_empty() {
-                    full_answer.push_str(&data);
-                    on_delta(&data);
-                }
-            }
-        }
-
-        Ok(full_answer)
-    }
-
-    pub async fn sales_summarize(&self, request: &SalesSummaryRequest) -> Result<SalesCallSummary, String> {
-        let url = format!("{}/api/v1/sales/summarize", self.base_url);
-        let response = self
-            .http
-            .post(&url)
-            .timeout(Duration::from_secs(60))
-            .json(request)
-            .send()
-            .await
-            .map_err(|e| format!("failed to reach backend: {e}"))?;
-
-        let status = response.status();
-        if status.is_success() {
-            response
-                .json::<SalesCallSummary>()
-                .await
-                .map_err(|e| format!("backend returned an unexpected response: {e}"))
-        } else {
-            let body_text = response.text().await.unwrap_or_default();
-            if let Ok(err) = serde_json::from_str::<ErrorResponse>(&body_text) {
-                Err(format!("{} ({})", err.error.message, err.error.code))
-            } else {
-                Err(format!("backend returned {status}: {body_text}"))
-            }
-        }
-    }
-
     /// Meeting Mode's live single-question flow, streaming the answer text
-    /// incrementally via `on_delta`. Mirrors `sales_ask_stream` above.
+    /// incrementally via `on_delta`. Mirrors `ask_stream` above.
     pub async fn meeting_ask_stream<F>(&self, request: &MeetingAskRequest, mut on_delta: F) -> Result<String, String>
     where
         F: FnMut(&str),
@@ -430,83 +311,6 @@ impl BackendClient {
         }
     }
 
-    /// Consulting Mode's live single-question flow, streaming the guidance
-    /// text incrementally via `on_delta`. Mirrors `ask_stream` above.
-    pub async fn consulting_ask_stream<F>(
-        &self,
-        request: &ConsultingAskRequest,
-        mut on_delta: F,
-    ) -> Result<String, String>
-    where
-        F: FnMut(&str),
-    {
-        let url = format!("{}/api/v1/consulting/ask/stream", self.base_url);
-        let response = self
-            .http
-            .post(&url)
-            .timeout(Duration::from_secs(60))
-            .json(request)
-            .send()
-            .await
-            .map_err(|e| format!("failed to reach backend: {e}"))?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let body_text = response.text().await.unwrap_or_default();
-            if let Ok(err) = serde_json::from_str::<ErrorResponse>(&body_text) {
-                return Err(format!("{} ({})", err.error.message, err.error.code));
-            }
-            return Err(format!("backend returned {status}: {body_text}"));
-        }
-
-        let mut stream = response.bytes_stream();
-        let mut buffer = String::new();
-        let mut full_answer = String::new();
-
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|e| format!("stream read error: {e}"))?;
-            buffer.push_str(&String::from_utf8_lossy(&chunk));
-
-            for (event_name, data) in drain_raw_sse_frames(&mut buffer) {
-                if event_name.as_deref() == Some("delta") && !data.is_empty() {
-                    full_answer.push_str(&data);
-                    on_delta(&data);
-                }
-            }
-        }
-
-        Ok(full_answer)
-    }
-
-    pub async fn consulting_summarize(
-        &self,
-        request: &ConsultingSummaryRequest,
-    ) -> Result<ConsultingNote, String> {
-        let url = format!("{}/api/v1/consulting/summarize", self.base_url);
-        let response = self
-            .http
-            .post(&url)
-            .timeout(Duration::from_secs(60))
-            .json(request)
-            .send()
-            .await
-            .map_err(|e| format!("failed to reach backend: {e}"))?;
-
-        let status = response.status();
-        if status.is_success() {
-            response
-                .json::<ConsultingNote>()
-                .await
-                .map_err(|e| format!("backend returned an unexpected response: {e}"))
-        } else {
-            let body_text = response.text().await.unwrap_or_default();
-            if let Ok(err) = serde_json::from_str::<ErrorResponse>(&body_text) {
-                Err(format!("{} ({})", err.error.message, err.error.code))
-            } else {
-                Err(format!("backend returned {status}: {body_text}"))
-            }
-        }
-    }
 
     pub async fn notes_summarize(&self, request: &NotesSummaryRequest) -> Result<NoteSummary, String> {
         let url = format!("{}/api/v1/notes/summarize", self.base_url);

@@ -19,6 +19,8 @@ import {
   classifyQuestionCompleteness,
   joinSpeech,
 } from "./questionCompleteness";
+import { AudioLevelBars, useSttSpeaking } from "./ui";
+import { loadLlmProvider } from "./llmProviderSetting";
 
 interface OverlayCaptureStatus {
   excluded: boolean;
@@ -72,6 +74,10 @@ export function InterviewOverlay() {
   // invocation racing an already-successful start from InterviewSetup) is
   // treated as active too, not an error.
   const [captureActive, setCaptureActive] = useState(false);
+  // True only while STT is actively producing transcript output right now —
+  // gates the listening animation so it doesn't run through silence just
+  // because capture is technically still open.
+  const sttSpeaking = useSttSpeaking();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [confirmingClose, setConfirmingClose] = useState(false);
   // Shows the opacity percentage in the header for a moment after adjusting.
@@ -290,6 +296,7 @@ export function InterviewOverlay() {
       .map((t) => ({ question: t.question, answer: t.answer }));
 
     try {
+      const chosenProvider = loadLlmProvider();
       await invoke<string>("ask_interview_question", {
         question: trimmed,
         history,
@@ -300,6 +307,14 @@ export function InterviewOverlay() {
           jobDescription: settings.jobDescription.trim() || null,
           englishLevel: settings.englishLevel,
           humanization: settings.humanization,
+          // DeepSeek isn't implemented backend-side yet (see
+          // llmProviderSetting.ts) — the header dropdown keeps it disabled,
+          // so only "anthropic"/"openai"/"gemini" ever actually reach here in
+          // practice, but guard anyway rather than send an unsupported value.
+          llmProvider:
+            chosenProvider === "anthropic" || chosenProvider === "openai" || chosenProvider === "gemini"
+              ? chosenProvider
+              : null,
         },
       });
     } catch (e) {
@@ -476,10 +491,7 @@ export function InterviewOverlay() {
         className="overlay-header"
         data-tauri-drag-region={settings.dragEnabled ? "deep" : undefined}
       >
-        <span
-          className={`overlay-rec-dot ${busy ? "busy" : captureActive ? "live" : "starting"}`}
-          title={busy ? "Answering…" : captureActive ? "Listening" : "Starting…"}
-        />
+        <AudioLevelBars active={sttSpeaking && !busy} />
         <div className="overlay-title">
           {/* While adjusting, the title doubles as the readout — the change
               itself can be hard to judge against a dark desktop, and this
@@ -546,6 +558,23 @@ export function InterviewOverlay() {
           </button>
         </div>
       </div>
+
+      {/* Screen-capture exclusion (SetWindowDisplayAffinity/
+          WDA_EXCLUDEFROMCAPTURE) can fail — older Windows builds don't
+          support it, and the OS call can simply error. When that happens
+          this window IS visible to screen share/recording, which defeats
+          the whole point of a private overlay, so this can't be a detail
+          tucked away in Settings (see OverlaySettingsPanel's "Screen Capture
+          Protection" row) — it has to stay on screen for the entire
+          session, not just flash once, since the interviewer's screen share
+          might start at any point after this. Rendered outside the
+          settings/confirm branches below so it persists across all of the
+          overlay's views. */}
+      {captureExcluded === false && (
+        <p className="overlay-capture-warning">
+          ⚠ Screen capture protection unavailable — this window may be visible if you share your screen
+        </p>
+      )}
 
       {confirmingClose ? (
         <div className="overlay-confirm-close">

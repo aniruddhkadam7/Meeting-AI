@@ -31,6 +31,10 @@ MAX_ITEM_TEXT_LENGTH = 1_000
 
 AnswerLength = Literal["brief", "default", "detailed"]
 ResponseStyle = Literal["natural", "technical", "concise"]
+Humanization = Literal["natural", "conversational", "formal"]
+# Only providers with a real LLMProvider implementation — see
+# app/schemas/ask.py's LlmProviderChoice for the full rationale.
+LlmProviderChoice = Literal["openai", "anthropic", "gemini"]
 
 
 class MeetingRetrievedChunk(BaseModel):
@@ -55,6 +59,10 @@ class MeetingAskRequest(BaseModel):
     participants: Optional[str] = Field(default=None, max_length=MAX_ROLE_LENGTH)
     answer_length: AnswerLength = "default"
     response_style: ResponseStyle = "natural"
+    humanization: Humanization = "natural"
+    # None keeps the server-configured LLM_PROVIDER default — see
+    # app/schemas/ask.py's AskRequest.llm_provider for the full rationale.
+    llm_provider: Optional[LlmProviderChoice] = None
 
 
 class MeetingAskResponse(BaseModel):

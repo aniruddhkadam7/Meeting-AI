@@ -3,9 +3,8 @@
 //! decisions/action items, ending in an AI meeting summary archived to
 //! Meeting history.
 //!
-//! Mirrors `sales_mode`'s window/command split, built on the same shared
-//! `overlay_window` module (parameterized by label) rather than a bespoke
-//! window implementation.
+//! Built on the shared `overlay_window` module (parameterized by label)
+//! rather than a bespoke window implementation.
 
 pub mod commands;
 pub mod history;

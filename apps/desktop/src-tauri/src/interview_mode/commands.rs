@@ -32,6 +32,10 @@ pub struct AskOptions {
     pub english_level: String,
     #[serde(default = "default_humanization")]
     pub humanization: String,
+    /// "openai" | "anthropic" | "gemini" — the header dropdown's chosen model provider.
+    /// `None` keeps the server-configured default.
+    #[serde(default)]
+    pub llm_provider: Option<String>,
 }
 
 fn default_answer_length() -> String {
@@ -74,6 +78,7 @@ impl Default for AskOptions {
             job_description: None,
             english_level: default_english_level(),
             humanization: default_humanization(),
+            llm_provider: None,
         }
     }
 }
@@ -258,6 +263,7 @@ pub async fn ask_interview_question(
         response_style: options.response_style,
         english_level: options.english_level,
         humanization: options.humanization,
+        llm_provider: options.llm_provider,
     };
 
     let client = BackendClient::new();

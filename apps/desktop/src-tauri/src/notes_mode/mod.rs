@@ -1,5 +1,5 @@
 //! Notes Mode: a normal in-app workspace (no overlay window, unlike
-//! Sales/Consulting) for quick notes, voice-to-text dictation, AI summaries,
+//! Interview/Meeting) for quick notes, voice-to-text dictation, AI summaries,
 //! and "ask AI about my notes".
 
 pub mod ai;

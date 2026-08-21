@@ -702,8 +702,19 @@ class AskService:
         self._settings = settings or get_settings()
         # Interview Mode gets its own provider instance so it can run a
         # faster/cheaper model than the analysis pipeline (ASK_LLM_MODEL) —
-        # latency matters far more here than depth.
+        # latency matters far more here than depth. Kept as the fallback used
+        # whenever a request doesn't name a provider explicitly (also what
+        # tests inject via the `provider` param).
         self._provider = provider or get_llm_provider(self._settings, model=self._settings.ask_model)
+        self._injected_provider = provider is not None
+
+    def _provider_for(self, request: AskRequest) -> LLMProvider:
+        # A test-injected provider (constructor arg) always wins — it exists
+        # specifically so tests can substitute a fake without a real API key,
+        # and a per-request override would silently bypass that.
+        if self._injected_provider or request.llm_provider is None:
+            return self._provider
+        return get_llm_provider(self._settings, model=self._settings.ask_model, provider=request.llm_provider)
 
     def _max_tokens(self, request: AskRequest) -> int:
         # The question's own wording sets the primary budget (see
@@ -725,7 +736,7 @@ class AskService:
 
     async def ask(self, request: AskRequest) -> AskResponse:
         start = time.perf_counter()
-        answer = await self._provider.generate(
+        answer = await self._provider_for(request).generate(
             _build_messages(request),
             temperature=self._settings.ask_temperature,
             max_tokens=self._max_tokens(request),
@@ -738,7 +749,7 @@ class AskService:
         start = time.perf_counter()
         first_token_ms: float | None = None
 
-        async for delta in self._provider.stream(
+        async for delta in self._provider_for(request).stream(
             _build_messages(request),
             temperature=self._settings.ask_temperature,
             max_tokens=self._max_tokens(request),

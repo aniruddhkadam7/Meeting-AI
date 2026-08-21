@@ -15,7 +15,7 @@ use crate::backend::{
 };
 use crate::overlay_window;
 use crate::rag::RetrievalPlanner;
-use crate::state::{AppState, SalesTrackedItem};
+use crate::state::{AppState, TrackedItem};
 
 use super::MEETING_OVERLAY_LABEL;
 
@@ -31,10 +31,16 @@ pub struct MeetingAskOptions {
     pub answer_length: String,
     #[serde(default = "default_response_style")]
     pub response_style: String,
+    #[serde(default = "default_humanization")]
+    pub humanization: String,
     #[serde(default)]
     pub meeting_title: Option<String>,
     #[serde(default)]
     pub participants: Option<String>,
+    /// "openai" | "anthropic" | "gemini" — the header dropdown's chosen model provider.
+    /// `None` keeps the server-configured default.
+    #[serde(default)]
+    pub llm_provider: Option<String>,
 }
 
 fn default_answer_length() -> String {
@@ -43,14 +49,19 @@ fn default_answer_length() -> String {
 fn default_response_style() -> String {
     "natural".to_string()
 }
+fn default_humanization() -> String {
+    "natural".to_string()
+}
 
 impl Default for MeetingAskOptions {
     fn default() -> Self {
         Self {
             answer_length: default_answer_length(),
             response_style: default_response_style(),
+            humanization: default_humanization(),
             meeting_title: None,
             participants: None,
+            llm_provider: None,
         }
     }
 }
@@ -124,9 +135,9 @@ pub async fn resize_meeting_overlay(app: AppHandle, fraction: f64) -> Result<(),
     .await
 }
 
-/// Runs the live "quick answer" flow for the user's question, mirroring
-/// Sales Mode's `ask_sales_question` (optional retrieval -> one LLM call ->
-/// stream). Streams `meeting-mode:answer-delta` / `answer-complete`.
+/// Runs the live "quick answer" flow for the user's question (optional
+/// retrieval -> one LLM call -> stream). Streams `meeting-mode:answer-delta`
+/// / `answer-complete`.
 #[tauri::command]
 pub async fn ask_meeting_question(
     app: AppHandle,
@@ -171,6 +182,8 @@ pub async fn ask_meeting_question(
         participants: options.participants,
         answer_length: options.answer_length,
         response_style: options.response_style,
+        humanization: options.humanization,
+        llm_provider: options.llm_provider,
     };
 
     let client = BackendClient::new();
@@ -228,7 +241,7 @@ pub fn track_meeting_item(state: State<'_, AppState>, kind: MeetingItemKind, tex
         return Err("cannot track an empty item".into());
     }
     let mut session = state.meeting_session.lock().map_err(|e| e.to_string())?;
-    let item = SalesTrackedItem { text: trimmed.to_string() };
+    let item = TrackedItem { text: trimmed.to_string() };
     match kind {
         MeetingItemKind::KeyPoint => session.key_points.push(item),
         MeetingItemKind::Decision => session.decisions.push(item),

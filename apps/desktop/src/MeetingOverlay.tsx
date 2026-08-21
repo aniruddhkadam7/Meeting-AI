@@ -11,7 +11,10 @@ import {
   SIZE_FRACTIONS,
   type MeetingOverlaySettings,
 } from "./meetingOverlaySettings";
+import { loadOverlaySettings } from "./overlaySettings";
 import { MeetingOverlaySettingsPanel } from "./MeetingOverlaySettingsPanel";
+import { AudioLevelBars, useSttSpeaking } from "./ui";
+import { loadLlmProvider } from "./llmProviderSetting";
 
 /// Range for the header's opacity slider — matches Interview Mode's overlay
 /// (see OPACITY_MIN/MAX in InterviewOverlay.tsx and MIN_USABLE_OPACITY in
@@ -83,6 +86,7 @@ export function MeetingOverlay() {
   });
   const [summary, setSummary] = useState<MeetingSummary | null>(null);
   const [ending, setEnding] = useState(false);
+  const sttSpeaking = useSttSpeaking();
 
   const questionRef = useRef<HTMLTextAreaElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -194,14 +198,27 @@ export function MeetingOverlay() {
 
     try {
       const info = meetingInfoRef.current;
+      const chosenProvider = loadLlmProvider();
+      // answerLength/responseStyle/humanization come from the shared
+      // Personalization settings (Settings > Personalization in the main
+      // window) — read fresh on each ask so a change there applies to the
+      // very next question without needing to restart the meeting.
+      const personalization = loadOverlaySettings();
       await invoke<string>("ask_meeting_question", {
         question: trimmed,
         history,
         options: {
-          answerLength: "default",
-          responseStyle: "natural",
+          answerLength: personalization.answerLength,
+          responseStyle: personalization.responseStyle,
+          humanization: personalization.humanization,
           meetingTitle: info.meetingTitle || null,
           participants: info.participants || null,
+          // See InterviewOverlay.tsx's identical guard — DeepSeek isn't
+          // implemented backend-side yet.
+          llmProvider:
+            chosenProvider === "anthropic" || chosenProvider === "openai" || chosenProvider === "gemini"
+              ? chosenProvider
+              : null,
         },
       });
     } catch (e) {
@@ -327,7 +344,6 @@ export function MeetingOverlay() {
           className="overlay-header"
           data-tauri-drag-region={settings.dragEnabled ? "deep" : undefined}
         >
-          <span className="overlay-rec-dot live" />
           <div className="overlay-title">Meeting Ended</div>
           <div className="overlay-header-actions">
             <button className="overlay-icon-button close" onClick={closeOverlay} title="Close">
@@ -351,7 +367,7 @@ export function MeetingOverlay() {
         className="overlay-header"
         data-tauri-drag-region={settings.dragEnabled ? "deep" : undefined}
       >
-        <span className={`overlay-rec-dot ${busy ? "busy" : "live"}`} title={busy ? "Answering…" : "Listening"} />
+        <AudioLevelBars active={sttSpeaking && !busy} />
         <div className="overlay-title">
           {opacityHint ? `Opacity ${opacityPercent}%` : busy ? "Answering…" : "Meeting"}
         </div>

@@ -77,38 +77,38 @@ body.overlay-window #root {
   cursor: grabbing;
 }
 
-.overlay-rec-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex: 0 0 auto;
-}
-
-.overlay-rec-dot.live {
-  background: #4ade80;
-  box-shadow: 0 0 8px rgba(74, 222, 128, 0.8);
-  animation: overlay-pulse 2s ease-in-out infinite;
-}
-
-.overlay-rec-dot.busy {
-  background: var(--accent);
-  box-shadow: 0 0 8px rgba(106, 168, 255, 0.8);
-  animation: overlay-pulse 1s ease-in-out infinite;
-}
-
-/* Rare now that Start Interview waits for capture to be confirmed ready
-   before this window ever opens (see InterviewSetup.tsx's prewarm), but
-   still reachable as a brief transitional state — styled rather than left
-   blank so it never reads as a rendering glitch. */
-.overlay-rec-dot.starting {
-  background: #fbbf24;
-  box-shadow: 0 0 8px rgba(251, 191, 36, 0.8);
-  animation: overlay-pulse 1s ease-in-out infinite;
-}
-
 @keyframes overlay-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
+}
+
+.audio-level-bars {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
+/* A liveness cue, not a volume meter — always bounces at the same fast, high
+   amplitude while listening, staggered per bar via animation-delay so the
+   three don't move in lockstep (which reads as one blinking block rather
+   than an active equalizer). */
+.audio-level-bar {
+  width: 3px;
+  height: 3px;
+  border-radius: 1px;
+  background: #4ade80;
+  animation: audio-bar-bounce 0.5s ease-in-out infinite;
+}
+
+.audio-level-bar:nth-child(1) { animation-delay: 0s; }
+.audio-level-bar:nth-child(2) { animation-delay: 0.15s; }
+.audio-level-bar:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes audio-bar-bounce {
+  0%, 100% { height: 3px; }
+  50% { height: 14px; }
 }
 
 .overlay-title {
@@ -548,6 +548,21 @@ body.overlay-window #root {
   font-size: 0.85em;
 }
 
+/* Deliberately louder than .overlay-error (solid background, not just
+   colored text) — this isn't a transient failure the user can shrug off,
+   it means the window is not actually hidden from screen capture, so it
+   needs to read as a standing condition rather than a passing notice. */
+.overlay-capture-warning {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 6px 12px;
+  background: rgba(251, 191, 36, 0.15);
+  border-bottom: 1px solid rgba(251, 191, 36, 0.35);
+  color: #fbbf24;
+  font-size: 0.8em;
+  font-weight: 600;
+}
+
 /* Compact density tightens the conversation, not the chrome. */
 .overlay-root.density-compact .overlay-chat {
   gap: 10px;
@@ -595,7 +610,6 @@ body.overlay-window #root {
   color: rgba(255, 255, 255, 0.85);
 }
 
-.overlay-settings-row select,
 .overlay-settings-row input[type="text"] {
   background-color: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.15);
@@ -604,6 +618,58 @@ body.overlay-window #root {
   font: inherit;
   font-size: 12px;
   padding: 3px 6px;
+}
+
+/* Dark-surface theme for the shared Select component (see .select-* in
+   App.css), used in the overlay's own settings panels which sit on a
+   translucent dark background rather than the main app's light --surface. */
+.overlay-settings-row .select-overlay {
+  flex: 1.4;
+  min-width: 0;
+}
+
+.select-overlay .select-trigger {
+  background-color: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 5px;
+  color: #f2f2f2;
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 6px;
+}
+
+.select-overlay .select-trigger:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.select-overlay .select-trigger:focus-visible,
+.select-overlay .select-trigger[aria-expanded="true"] {
+  border-color: #5b8def;
+  box-shadow: 0 0 0 2px rgba(91, 141, 239, 0.35);
+}
+
+.select-overlay .select-trigger-caret {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.select-overlay .select-menu {
+  background: #23262e;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.select-overlay .dropdown-item {
+  color: #f2f2f2;
+  font-size: 12px;
+}
+
+.select-overlay .dropdown-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.select-overlay .dropdown-item.active {
+  background: rgba(91, 141, 239, 0.25);
+  color: #cddcfb;
 }
 
 .overlay-settings-row input[type="range"] {

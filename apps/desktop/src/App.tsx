@@ -14,30 +14,42 @@ import { Account } from "./Account";
 import { SettingsPopover } from "./SettingsPopover";
 import { UpdateBanner } from "./UpdateBanner";
 import { LowEndHardwareBanner } from "./LowEndHardwareBanner";
-import { InterviewHistory } from "./InterviewHistory";
-import { MeetingHistory } from "./MeetingHistory";
 import { HeaderDropdown } from "./HeaderDropdown";
 import { answerStyleToOverlayFields, loadOverlaySettings, saveOverlaySettings } from "./overlaySettings";
-import { Button } from "./ui";
+import { Button, Spinner } from "./ui";
 import { IconAccount, IconAttachment, IconChevronDown, IconSettings } from "./Icons";
+import { IconAnthropic, IconDeepSeek, IconGemini, IconOpenAI } from "./ProviderIcons";
 import { INTERVIEW_CONTEXT_SECTIONS, MEETING_CONTEXT_SECTIONS } from "./headerPopups";
+import { loadLlmProvider, saveLlmProvider, type LlmProvider } from "./llmProviderSetting";
 
-type Mode = "INTERVIEW" | "MEETING";
+export type Mode = "INTERVIEW" | "MEETING";
 type SessionState = "IDLE" | "STARTING" | "LISTENING";
-type Popover = "MODE" | "CONTEXT" | "SETTINGS" | "ACCOUNT" | null;
+type Popover = "MODE" | "MODEL" | "CONTEXT" | "SETTINGS" | "ACCOUNT" | null;
 
 const MODE_LABELS: Record<Mode, string> = {
   INTERVIEW: "Interview",
   MEETING: "Meeting",
 };
 
+// Only "openai", "anthropic", and "gemini" have a real backend
+// implementation (see apps/backend/app/services/llm/__init__.py::
+// get_llm_provider) — "deepseek" is listed so the dropdown shows all four,
+// but stays disabled until a provider is actually built for it.
+const LLM_PROVIDERS: { value: LlmProvider; label: string; icon: typeof IconOpenAI; available: boolean }[] = [
+  { value: "anthropic", label: "Anthropic", icon: IconAnthropic, available: true },
+  { value: "openai", label: "OpenAI", icon: IconOpenAI, available: true },
+  { value: "gemini", label: "Gemini", icon: IconGemini, available: true },
+  { value: "deepseek", label: "DeepSeek", icon: IconDeepSeek, available: false },
+];
+
 function App() {
   const [mode, setMode] = useState<Mode>("INTERVIEW");
+  const [llmProvider, setLlmProvider] = useState<LlmProvider>(() => loadLlmProvider());
   const [sessionState, setSessionState] = useState<SessionState>("IDLE");
   const [openPopover, setOpenPopover] = useState<Popover>(null);
   const [error, setError] = useState<string | null>(null);
   const [isMaximized, setIsMaximized] = useState(false);
-  const [historyRefreshKey] = useState(0);
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
 
   const [interviewContext, setInterviewContext] = useState<DocumentContextState>(() =>
     emptyDocumentContextState(INTERVIEW_CONTEXT_SECTIONS),
@@ -97,6 +109,7 @@ function App() {
   useEffect(() => {
     const unlisten = listen("interview-mode:overlay-closed", () => {
       setSessionState("IDLE");
+      setHistoryRefreshKey((k) => k + 1);
     });
     return () => {
       unlisten.then((f) => f());
@@ -171,6 +184,7 @@ function App() {
       setError(String(e));
     } finally {
       setSessionState("IDLE");
+      setHistoryRefreshKey((k) => k + 1);
     }
   }, [mode]);
 
@@ -212,6 +226,55 @@ function App() {
                       }}
                     >
                       {MODE_LABELS[m]}
+                    </button>
+                  ))}
+                </div>
+              </HeaderDropdown>
+            )}
+          </div>
+
+          <div className="dropdown-anchor">
+            <button
+              className="compact-header-btn"
+              onClick={() => togglePopover("MODEL")}
+              disabled={sessionState !== "IDLE"}
+              aria-haspopup="menu"
+              aria-expanded={openPopover === "MODEL"}
+              title="Which AI model answers your questions"
+            >
+              {(() => {
+                const current = LLM_PROVIDERS.find((p) => p.value === llmProvider)!;
+                const CurrentIcon = current.icon;
+                return (
+                  <>
+                    <CurrentIcon size={14} />
+                    <span>{current.label}</span>
+                  </>
+                );
+              })()}
+              <IconChevronDown />
+            </button>
+            {openPopover === "MODEL" && (
+              <HeaderDropdown onClose={closePopover} className="header-dropdown-menu header-dropdown-model">
+                <div role="menu">
+                  {LLM_PROVIDERS.map((p) => (
+                    <button
+                      key={p.value}
+                      role="menuitemradio"
+                      aria-checked={llmProvider === p.value}
+                      disabled={!p.available}
+                      className={`dropdown-item dropdown-item-icon${llmProvider === p.value ? " active" : ""}`}
+                      title={p.available ? undefined : "Coming soon"}
+                      onClick={() => {
+                        if (!p.available) return;
+                        setLlmProvider(p.value);
+                        saveLlmProvider(p.value);
+                        closePopover();
+                      }}
+                    >
+                      <p.icon size={16} />
+                      <span>{p.label}</span>
+                      {!p.available && <span className="dropdown-item-badge">Soon</span>}
                     </button>
                   ))}
                 </div>
@@ -283,7 +346,19 @@ function App() {
             </Button>
           ) : (
             <Button variant="primary" onClick={handleStart} disabled={sessionState === "STARTING"}>
-              {startLabel}
+              {/* The STT model load behind Start can take a couple of
+                  seconds (cold-starting the sidecar process + loading the
+                  ONNX model) — a static label made that wait look frozen.
+                  This spinner is the only signal the user has that anything
+                  is happening until the overlay itself opens. */}
+              {sessionState === "STARTING" ? (
+                <span className="btn-spinner">
+                  <Spinner />
+                  {startLabel}
+                </span>
+              ) : (
+                startLabel
+              )}
             </Button>
           )}
 
@@ -300,7 +375,7 @@ function App() {
             </button>
             {openPopover === "SETTINGS" && (
               <HeaderDropdown onClose={closePopover} className="header-dropdown-panel header-dropdown-settings">
-                <SettingsPopover onClose={closePopover} />
+                <SettingsPopover onClose={closePopover} mode={mode} historyRefreshKey={historyRefreshKey} />
               </HeaderDropdown>
             )}
           </div>
@@ -331,11 +406,6 @@ function App() {
         <div className="expanded-content">
           <UpdateBanner />
           <LowEndHardwareBanner />
-          {mode === "INTERVIEW" ? (
-            <InterviewHistory refreshKey={historyRefreshKey} />
-          ) : (
-            <MeetingHistory refreshKey={historyRefreshKey} />
-          )}
         </div>
       )}
     </main>

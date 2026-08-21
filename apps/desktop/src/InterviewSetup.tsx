@@ -11,7 +11,7 @@ import {
   type Humanization,
 } from "./overlaySettings";
 import type { DocumentType } from "./types";
-import { Button, Spinner } from "./ui";
+import { Button, Select, Spinner } from "./ui";
 
 interface Props {
   onStart: () => void;
@@ -416,42 +416,45 @@ export function InterviewSetup({ onStart }: Props) {
               <div className="setup-style-popover">
                 <div className="setup-style-field">
                   <label htmlFor="setup-english-level">English</label>
-                  <select
+                  <Select
                     id="setup-english-level"
-                    className="setup-input"
+                    className="setup-select"
                     value={englishLevel}
-                    onChange={(e) => setEnglishLevel(e.target.value as EnglishLevel)}
-                  >
-                    <option value="simple">Simple (Default)</option>
-                    <option value="professional">Professional</option>
-                    <option value="advanced">Advanced</option>
-                  </select>
+                    onChange={(v: EnglishLevel) => setEnglishLevel(v)}
+                    options={[
+                      { value: "simple", label: "Simple (Default)" },
+                      { value: "professional", label: "Professional" },
+                      { value: "advanced", label: "Advanced" },
+                    ]}
+                  />
                 </div>
                 <div className="setup-style-field">
                   <label htmlFor="setup-answer-style">Answer style</label>
-                  <select
+                  <Select
                     id="setup-answer-style"
-                    className="setup-input"
+                    className="setup-select"
                     value={answerStyle}
-                    onChange={(e) => setAnswerStyle(e.target.value as AnswerStyle)}
-                  >
-                    <option value="natural">Natural &amp; Human (Default)</option>
-                    <option value="concise">Concise</option>
-                    <option value="detailed">Detailed</option>
-                  </select>
+                    onChange={(v: AnswerStyle) => setAnswerStyle(v)}
+                    options={[
+                      { value: "natural", label: "Natural & Human (Default)" },
+                      { value: "concise", label: "Concise" },
+                      { value: "detailed", label: "Detailed" },
+                    ]}
+                  />
                 </div>
                 <div className="setup-style-field">
                   <label htmlFor="setup-humanization">Humanization</label>
-                  <select
+                  <Select
                     id="setup-humanization"
-                    className="setup-input"
+                    className="setup-select"
                     value={humanization}
-                    onChange={(e) => setHumanization(e.target.value as Humanization)}
-                  >
-                    <option value="natural">Natural</option>
-                    <option value="conversational">More Conversational</option>
-                    <option value="formal">More Formal</option>
-                  </select>
+                    onChange={(v: Humanization) => setHumanization(v)}
+                    options={[
+                      { value: "natural", label: "Natural" },
+                      { value: "conversational", label: "More Conversational" },
+                      { value: "formal", label: "More Formal" },
+                    ]}
+                  />
                 </div>
               </div>
             )}

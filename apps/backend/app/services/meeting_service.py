@@ -40,6 +40,14 @@ class MeetingService:
     def __init__(self, provider: LLMProvider | None = None, settings: Settings | None = None) -> None:
         self._settings = settings or get_settings()
         self._provider = provider or get_llm_provider(self._settings, model=self._settings.ask_model)
+        self._injected_provider = provider is not None
+
+    def _provider_for(self, request: MeetingAskRequest) -> LLMProvider:
+        # A test-injected provider always wins — see AskService._provider_for
+        # for the same rationale.
+        if self._injected_provider or request.llm_provider is None:
+            return self._provider
+        return get_llm_provider(self._settings, model=self._settings.ask_model, provider=request.llm_provider)
 
     def _max_tokens(self, request: MeetingAskRequest) -> int:
         if request.answer_length == "brief":
@@ -50,7 +58,7 @@ class MeetingService:
 
     async def ask(self, request: MeetingAskRequest) -> MeetingAskResponse:
         start = time.perf_counter()
-        answer = await self._provider.generate(
+        answer = await self._provider_for(request).generate(
             build_ask_messages(request),
             temperature=self._settings.ask_temperature,
             max_tokens=self._max_tokens(request),
@@ -59,7 +67,7 @@ class MeetingService:
         return MeetingAskResponse(answer=answer.strip(), latency_ms=round(latency_ms, 2))
 
     async def ask_stream(self, request: MeetingAskRequest) -> AsyncIterator[str]:
-        async for delta in self._provider.stream(
+        async for delta in self._provider_for(request).stream(
             build_ask_messages(request),
             temperature=self._settings.ask_temperature,
             max_tokens=self._max_tokens(request),

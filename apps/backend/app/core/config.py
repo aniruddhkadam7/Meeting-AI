@@ -58,6 +58,7 @@ class Settings:
     llm_model: str = os.getenv("LLM_MODEL", "gpt-4o-mini")
     openai_api_key: Optional[str] = os.getenv("OPENAI_API_KEY") or None
     anthropic_api_key: Optional[str] = os.getenv("ANTHROPIC_API_KEY") or None
+    gemini_api_key: Optional[str] = os.getenv("GEMINI_API_KEY") or None
 
     # Cost/context controls (spec section 28).
     max_questions_to_analyze: int = int(os.getenv("MAX_QUESTIONS_TO_ANALYZE", "50"))

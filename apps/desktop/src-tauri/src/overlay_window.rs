@@ -1,11 +1,11 @@
-//! Shared frameless/always-on-top overlay window mechanics for Sales Mode and
-//! Consulting Mode, parameterized by window label instead of the
-//! Interview-Mode-specific constants baked into `interview_mode::window`.
+//! Shared frameless/always-on-top overlay window mechanics for Meeting Mode,
+//! parameterized by window label instead of the Interview-Mode-specific
+//! constants baked into `interview_mode::window`.
 //!
 //! This is a deliberate near-duplicate of `interview_mode/window.rs` rather
 //! than a refactor of it — Interview Mode must stay unchanged, so its module
 //! is left untouched and this sibling module carries the same logic
-//! parameterized by label for the two new live-call modes.
+//! parameterized by label instead.
 
 use tauri::{
     window::Color, AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, WebviewUrl, WebviewWindow,
@@ -24,40 +24,48 @@ pub struct OverlayCaptureStatus {
     pub excluded: bool,
 }
 
-/// Creates the overlay window (if it doesn't exist), positions it centered on
-/// the primary monitor, applies capture exclusion, hides the main window, and
-/// shows it. `title` is the OS window title; `label` distinguishes this
-/// overlay from Interview Mode's and from the other live-call mode's overlay.
+/// Creates the overlay window (if it doesn't exist), docks it where the main
+/// header window currently sits, applies capture exclusion, shows it, then
+/// hides the main window so the overlay is the only thing visible — same
+/// ordering/rationale as `interview_mode::window::show_overlay_window` (hidden
+/// LAST, only once the overlay is actually docked/shown, so there's no
+/// visible gap where the app looks like it closed). `title` is the OS window
+/// title; `label` distinguishes this overlay from Interview Mode's and from
+/// the other live-call mode's overlay.
 pub fn show_overlay_window(app: &AppHandle, label: &str, title: &str) -> Result<OverlayCaptureStatus, String> {
+    let excluded = if let Some(existing) = app.get_webview_window(label) {
+        dock_below_main_window(app, &existing, false);
+        existing.show().map_err(|e| e.to_string())?;
+        existing.set_focus().map_err(|e| e.to_string())?;
+        windows_capture_protection::enable_capture_exclusion(&existing).is_ok()
+    } else {
+        let window = build_overlay_window(app, label, title)?;
+        dock_below_main_window(app, &window, true);
+
+        let excluded = windows_capture_protection::enable_capture_exclusion(&window).is_ok();
+        if excluded {
+            log::info!("overlay '{label}': screen-capture exclusion ENABLED");
+        } else {
+            log::warn!("overlay '{label}': screen-capture exclusion FAILED/UNAVAILABLE");
+        }
+
+        window.show().map_err(|e| e.to_string())?;
+        window.set_focus().map_err(|e| e.to_string())?;
+        excluded
+    };
+
     if let Some(main) = app.get_webview_window(MAIN_WINDOW_LABEL) {
         if let Err(e) = main.hide() {
             log::warn!("failed to hide main window when entering overlay '{label}': {e}");
         }
     }
 
-    if let Some(existing) = app.get_webview_window(label) {
-        existing.show().map_err(|e| e.to_string())?;
-        existing.set_focus().map_err(|e| e.to_string())?;
-        let excluded = windows_capture_protection::enable_capture_exclusion(&existing).is_ok();
-        return Ok(OverlayCaptureStatus { excluded });
-    }
-
-    let window = build_overlay_window(app, label, title)?;
-    size_and_center(&window, DEFAULT_SIZE_FRACTION);
-
-    let excluded = windows_capture_protection::enable_capture_exclusion(&window).is_ok();
-    if excluded {
-        log::info!("overlay '{label}': screen-capture exclusion ENABLED");
-    } else {
-        log::warn!("overlay '{label}': screen-capture exclusion FAILED/UNAVAILABLE");
-    }
-
-    window.show().map_err(|e| e.to_string())?;
-    window.set_focus().map_err(|e| e.to_string())?;
-
     Ok(OverlayCaptureStatus { excluded })
 }
 
+/// Hides the overlay and brings the main window back, since it's hidden on
+/// entry (see `show_overlay_window`).
+///
 /// Also emits `interview-mode:overlay-closed` to every window — see the doc
 /// comment on `interview_mode::window::close_overlay_window` for why: the
 /// overlay and main window are separate webviews with no shared React
@@ -104,7 +112,13 @@ pub fn resize_overlay(app: &AppHandle, label: &str, fraction: f64) -> Result<(),
     let Some(window) = app.get_webview_window(label) else {
         return Ok(());
     };
-    size_and_center(&window, fraction);
+    if let Ok(Some(monitor)) = window.primary_monitor() {
+        let scale = monitor.scale_factor();
+        let monitor_size = monitor.size().to_logical::<f64>(scale);
+        let side = (monitor_size.width.min(monitor_size.height) * fraction).max(320.0);
+        let _ = window.set_size(LogicalSize::new(side, side));
+    }
+    dock_below_main_window(app, &window, false);
     Ok(())
 }
 
@@ -126,18 +140,63 @@ fn build_overlay_window(app: &AppHandle, label: &str, title: &str) -> Result<Web
         .map_err(|e| format!("failed to create overlay window '{label}': {e}"))
 }
 
-fn size_and_center(window: &WebviewWindow, fraction: f64) {
+/// Gap between the main window's bottom edge and the overlay's top edge —
+/// see `interview_mode::window`'s identical constant/rationale.
+const DOCK_GAP: f64 = 8.0;
+
+/// Docks the overlay directly beneath the main header window, aligned to the
+/// header's left edge. If `apply_default_size` is set (only true right after
+/// `build_overlay_window` creates a brand-new window), also sizes it to a
+/// square roughly three-quarters of the primary monitor's shorter dimension
+/// first. `resize_overlay` sets its own explicit size before calling this
+/// purely for repositioning, so it always passes `false`.
+///
+/// Falls back to centering on the primary monitor if the main window can't be
+/// found/queried.
+fn dock_below_main_window(app: &AppHandle, window: &WebviewWindow, apply_default_size: bool) {
+    if apply_default_size {
+        if let Ok(Some(monitor)) = window.primary_monitor() {
+            let scale = monitor.scale_factor();
+            let monitor_size = monitor.size().to_logical::<f64>(scale);
+            let side = (monitor_size.width.min(monitor_size.height) * DEFAULT_SIZE_FRACTION).max(360.0);
+            let _ = window.set_size(LogicalSize::new(side, side));
+        }
+    }
+
+    let Some(main) = app.get_webview_window(MAIN_WINDOW_LABEL) else {
+        center_on_primary_monitor(window);
+        return;
+    };
+    let Ok(main_pos) = main.outer_position() else {
+        center_on_primary_monitor(window);
+        return;
+    };
+    let Ok(main_size) = main.outer_size() else {
+        center_on_primary_monitor(window);
+        return;
+    };
+    let scale = main.scale_factor().unwrap_or(1.0);
+    let main_pos = main_pos.to_logical::<f64>(scale);
+    let main_size = main_size.to_logical::<f64>(scale);
+
+    let x = main_pos.x;
+    let y = main_pos.y + main_size.height + DOCK_GAP;
+    let _ = window.set_position(LogicalPosition::new(x, y));
+}
+
+fn center_on_primary_monitor(window: &WebviewWindow) {
     let Ok(Some(monitor)) = window.primary_monitor() else {
         return;
     };
     let scale = monitor.scale_factor();
     let monitor_size = monitor.size().to_logical::<f64>(scale);
     let monitor_pos = monitor.position().to_logical::<f64>(scale);
+    let Ok(size) = window.inner_size() else {
+        return;
+    };
+    let size = size.to_logical::<f64>(scale);
 
-    let side = (monitor_size.width.min(monitor_size.height) * fraction).max(320.0);
-    let x = monitor_pos.x + (monitor_size.width - side) / 2.0;
-    let y = monitor_pos.y + (monitor_size.height - side) / 2.0;
-
-    let _ = window.set_size(LogicalSize::new(side, side));
+    let x = monitor_pos.x + (monitor_size.width - size.width) / 2.0;
+    let y = monitor_pos.y + (monitor_size.height - size.height) / 2.0;
     let _ = window.set_position(LogicalPosition::new(x, y));
 }
