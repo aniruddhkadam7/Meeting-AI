@@ -18,11 +18,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Smallbird — AI assistant for important conversations",
+  title: "Smallbird — AI Assistant",
   description:
     "Smallbird gives you real-time AI assistance during interviews and meetings — with context from your CV, job description, and meeting documents.",
   icons: {
     icon: "/smallbird-logo.png",
+    shortcut: "/smallbird-logo.png",
+    apple: "/smallbird-logo.png",
   },
 };
 
